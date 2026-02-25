@@ -65,6 +65,39 @@ rake kabosu:remove[small]      # Remove a dictionary (VERSION=YYYYMMDD for a spe
 
 Dictionaries are stored in `~/.kabosu/dict/` by default. Set `KABOSU_DICT_DIR` to customize.
 
+## Usage
+
+```ruby
+require "kabosu"
+
+# Tokenize Japanese text (auto-discovers installed dictionary)
+morphemes = Kabosu.tokenize("東京都に住んでいる")
+
+# Bulk accessors for quick extraction
+morphemes.surfaces          # => ["東京都", "に", "住ん", "で", "いる"]
+morphemes.readings          # => ["トウキョウト", "ニ", "スン", "デ", "イル"]
+morphemes.dictionary_forms  # => ["東京都", "に", "住む", "で", "居る"]
+
+# Each morpheme exposes rich linguistic detail
+morpheme = morphemes.first
+morpheme.surface             # => "東京都"         - surface form (as it appears in text)
+morpheme.part_of_speech      # => ["名詞", "固有名詞", "地名", "一般"] — part-of-speech tags
+morpheme.part_of_speech_id   # => 5                - numeric POS id
+morpheme.dictionary_form     # => "東京都"         - base/dictionary form
+morpheme.normalized_form     # => "東京都"         - normalized form
+morpheme.reading_form        # => "トウキョウト"   - phonetic reading
+morpheme.oov?                # => false            - out-of-vocabulary?
+morpheme.dictionary_id       # => 0                - source dictionary id
+morpheme.word_id             # => 544373           - internal word id
+morpheme.synonym_group_ids   # => []               - synonym group ids
+morpheme.total_cost          # => 5765             - morphological analysis cost
+morpheme.begin               # => 0                - start byte offset
+morpheme.end                 # => 9                - end byte offset
+morpheme.begin_c             # => 0                - start character offset
+morpheme.end_c               # => 3                - end character offset
+morpheme.system?             # => true             - from system dictionary?
+morpheme.user?               # => false            - from user dictionary?
+```
 
 ### Tokenization modes
 
@@ -92,11 +125,49 @@ tokenizer = dict.create("C")
 morphemes = tokenizer.tokenize("国会議事堂前駅")
 ```
 
+## Benchmarks
+
+Kabosu ships with a benchmark suite that measures tokenization throughput and compares the Ruby bindings against raw [sudachi.rs](https://github.com/WorksApplications/sudachi.rs).
+
+This benchmark uses [Wagahai wa Neko de Aru](https://www.aozora.gr.jp/cards/000148/card789.html) (I Am a Cat) by Natsume Soseki, sourced from [Aozora Bunko](https://www.aozora.gr.jp/) (public domain) as the source text. ~958 KB of Japanese prose, 2,256 lines as input.
+
+### Results
+
+Measured on an AMD Ryzen 7 5800X, `full` dictionary edition, Ruby 3.4, Rust 1.84:
+
+| Scenario | Rust | Ruby | Ratio |
+|---|---|---|---|
+| Sentence-by-sentence (mode C) | 5.088s | 5.981s | 1.2x |
+| Sentence-by-sentence (mode A) | 5.145s | 6.216s | 1.2x |
+| Sentence-by-sentence (mode B) | 5.249s | 6.257s | 1.2x |
+| **Throughput** | **1.80 MB/s** | **1.45 MB/s** | **1.2x** |
+
+The Ruby bindings add ~20% overhead over raw Rust, primarily from FFI boundary crossings and Ruby object allocation for each morpheme.
+
+To reproduce these results, run:
+
+```sh
+bundle exec ruby bench/start
+```
+
+### Profiling
+
+To generate flamegraph SVGs alongside the benchmark:
+
+```sh
+bundle exec ruby bench/start --profile
+```
+
+This records both the Rust and Ruby runs with `perf` and produces interactive SVGs (`bench/flamegraph-rust.svg`, `bench/flamegraph-ruby.svg`). Open them in a browser to explore.
+
 ## Contributing
 
 ```sh
 bundle install
-bundle exec rake compile   # Build the native extension
-bundle exec rake test      # Run tests
-bundle exec rake           # Compile + test
+
+bundle exec rake kabosu:install # Install Sudachi dictionary
+
+bundle exec rake compile        # Build the native extension  
+bundle exec rake test           # Run tests
+bench/start                     # Run benchmarks
 ```

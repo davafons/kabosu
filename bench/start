@@ -1,0 +1,127 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+#
+# Run benchmarks and print a comparison table.
+#
+# Usage:
+#   bundle exec ruby bench/start              # Run benchmarks only
+#   bundle exec ruby bench/start --profile    # Benchmark under perf + flamegraph SVGs
+#
+
+BENCH_DIR = File.expand_path(__dir__)
+ROOT_DIR = File.expand_path("..", BENCH_DIR)
+FIXTURE = File.join(BENCH_DIR, "fixtures", "wagahai.txt")
+RUST_DIR = File.join(BENCH_DIR, "rust_bench")
+
+PROFILE = ARGV.include?("--profile")
+
+DICT_PATH = ENV["KABOSU_DICT"] || `cd #{ROOT_DIR} && bundle exec rake kabosu:path 2>/dev/null`.strip
+
+def run(cmd, label)
+  puts "=> #{label}"
+  output = String.new
+
+  IO.popen(cmd, err: [:child, :out]) do |io|
+    io.each_line do |line|
+      print "   #{line}"
+      output << line
+    end
+  end
+
+  abort "\nFAILED: #{label}" unless $?.success?
+  puts
+  output
+end
+
+def profile(cmd, name)
+  perf_data = File.join(BENCH_DIR, "perf-#{name}.data")
+  svg = File.join(BENCH_DIR, "flamegraph-#{name}.svg")
+  stacks = File.join(BENCH_DIR, "stacks-#{name}.txt")
+
+  output = run("cd #{ROOT_DIR} && perf record -g --call-graph dwarf -o #{perf_data} -- #{cmd}", "Profiling #{name}...")
+
+  puts "=> Generating flamegraph..."
+  system("perf script -i #{perf_data} | inferno-collapse-perf > #{stacks}")
+  system("cat #{stacks} | inferno-flamegraph > #{svg}")
+  File.delete(perf_data) if File.exist?(perf_data)
+
+  puts "   #{svg}"
+  puts
+  output
+end
+
+# --- Check profiling deps ---
+
+if PROFILE
+  system("command -v perf >/dev/null 2>&1") || abort("Error: perf not installed")
+  unless system("command -v inferno-flamegraph >/dev/null 2>&1")
+    puts "=> Installing inferno..."
+    system("cargo install inferno") || abort("Failed to install inferno")
+  end
+end
+
+# --- Setup ---
+
+puts "=" * 60
+puts " Kabosu Benchmark"
+puts "=" * 60
+puts
+
+unless File.exist?(FIXTURE) && File.size(FIXTURE) > 0
+  run("#{BENCH_DIR}/setup", "Downloading fixture text...")
+end
+
+puts "Fixture: #{FIXTURE} (#{File.size(FIXTURE)} bytes)"
+puts
+
+dict_arg = DICT_PATH.empty? ? "" : " #{DICT_PATH}"
+
+if PROFILE
+  # --- Benchmark under profiling ---
+
+  run("cd #{RUST_DIR} && cargo build --release", "Building Rust binary...")
+  rust_bin = File.join(RUST_DIR, "target", "release", "kabosu-bench")
+
+  rust_output = profile("#{rust_bin} #{FIXTURE}#{dict_arg}", "rust")
+  ruby_output = profile("bundle exec ruby #{BENCH_DIR}/bench_tokenize.rb", "ruby")
+
+  puts "Open the SVGs in a browser for interactive flamegraphs."
+  puts
+else
+  # --- Benchmark ---
+
+  rust_cmd = "cd #{RUST_DIR} && cargo run --release -- #{FIXTURE}#{dict_arg}"
+  rust_output = run(rust_cmd, "Rust benchmark...")
+  ruby_output = run("cd #{ROOT_DIR} && bundle exec ruby bench/bench_tokenize.rb", "Ruby benchmark...")
+end
+
+# --- Results ---
+
+rust_times = {}
+rust_output.scan(/mode ([ABC])\):\s+([\d.]+)s/) { |mode, t| rust_times[mode] = t.to_f }
+rust_tp = rust_output[/Throughput:\s+([\d.]+)/, 1]&.to_f
+
+ruby_times = {}
+ruby_output.scan(/mode ([ABC]).*?\(\s*([\d.]+)\)/) { |mode, t| ruby_times[mode] = t.to_f }
+ruby_tp = ruby_output[/Throughput:\s+([\d.]+)/, 1]&.to_f
+
+puts "=" * 60
+puts " Results (10 iterations)"
+puts "=" * 60
+puts
+puts "%-20s %12s %12s %10s" % ["", "Rust", "Ruby", "Ratio"]
+puts "-" * 56
+
+fmt = ->(r, rb) { rb && r && r > 0 ? "%.1fx" % (rb / r) : "-" }
+time_fmt = ->(t) { t ? "%.3fs" % t : "-" }
+
+%w[C A B].each do |mode|
+  rt, rbt = rust_times[mode], ruby_times[mode]
+  puts "%-20s %12s %12s %10s" % ["Full text (mode #{mode})", time_fmt[rt], time_fmt[rbt], fmt[rt, rbt]]
+end
+
+puts "%-20s %12s %12s %10s" % ["Throughput (MB/s)", rust_tp ? "%.2f" % rust_tp : "-", ruby_tp ? "%.2f" % ruby_tp : "-", fmt[ruby_tp, rust_tp]]
+
+puts
+puts "Ratio = Ruby / Rust (lower = less FFI overhead)"

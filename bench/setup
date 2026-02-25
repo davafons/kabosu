@@ -41,6 +41,7 @@ else
   #   gaiji markers (※[...]), and structural annotations (［＃...］)
   # - Remove blank lines
   iconv -f SHIFT_JIS -t UTF-8 "$TXT_FILE" \
+    | tr -d '\r' \
     | sed '1,/^-------------------------------------------------------$/d' \
     | sed '1,/^-------------------------------------------------------$/d' \
     | sed '/^底本：/,$d' \

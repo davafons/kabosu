@@ -17,3 +17,6 @@ Cargo.lock
 *.gem
 /bench/fixtures/*.txt
 /bench/rust_bench/target/
+/bench/flamegraph-*.svg
+/bench/stacks-*.txt
+/bench/perf-*.data

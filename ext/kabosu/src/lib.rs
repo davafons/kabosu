@@ -1,11 +1,12 @@
 use magnus::{function, method, prelude::*, Error, RArray, Ruby, Value};
-use std::cell::{Cell, RefCell};
+use std::cell::{Cell, OnceCell, RefCell};
 use std::sync::Arc;
 use sudachi::analysis::stateful_tokenizer::StatefulTokenizer;
 use sudachi::analysis::stateless_tokenizer::StatelessTokenizer;
 use sudachi::analysis::{Mode, Tokenize};
 use sudachi::config::Config;
 use sudachi::dic::dictionary::JapaneseDictionary;
+use sudachi::dic::word_id::WordId;
 use sudachi::prelude::MorphemeList;
 use sudachi::sentence_splitter::{SentenceSplitter, SplitSentences};
 
@@ -113,24 +114,21 @@ impl RbTokenizer {
             let wid = m.word_id();
             let rb_m = RbMorpheme {
                 surface: m.surface().to_string(),
-                pos: m.part_of_speech().iter().map(|s| s.to_string()).collect(),
                 pos_id: m.part_of_speech_id(),
-                dictionary_form: m.dictionary_form().to_string(),
-                normalized_form: m.normalized_form().to_string(),
-                reading_form: m.reading_form().to_string(),
+                word_id_raw: wid.as_raw(),
                 is_oov: m.is_oov(),
                 dictionary_id: m.dictionary_id(),
-                word_id_raw: wid.as_raw(),
                 is_system: wid.is_system(),
                 is_user: wid.is_user(),
                 begin: m.begin(),
                 end: m.end(),
                 begin_c: m.begin_c(),
                 end_c: m.end_c(),
-                synonym_group_ids: m.synonym_group_ids().to_vec(),
                 total_cost: m.total_cost(),
                 dict: self.dict.clone(),
                 debug: self.debug.get(),
+                pos: OnceCell::new(),
+                word_fields: OnceCell::new(),
             };
             ary.push(rb_m)?;
         }
@@ -203,24 +201,21 @@ impl RbStatefulTokenizer {
             let wid = m.word_id();
             let rb_m = RbMorpheme {
                 surface: m.surface().to_string(),
-                pos: m.part_of_speech().iter().map(|s| s.to_string()).collect(),
                 pos_id: m.part_of_speech_id(),
-                dictionary_form: m.dictionary_form().to_string(),
-                normalized_form: m.normalized_form().to_string(),
-                reading_form: m.reading_form().to_string(),
+                word_id_raw: wid.as_raw(),
                 is_oov: m.is_oov(),
                 dictionary_id: m.dictionary_id(),
-                word_id_raw: wid.as_raw(),
                 is_system: wid.is_system(),
                 is_user: wid.is_user(),
                 begin: m.begin(),
                 end: m.end(),
                 begin_c: m.begin_c(),
                 end_c: m.end_c(),
-                synonym_group_ids: m.synonym_group_ids().to_vec(),
                 total_cost: m.total_cost(),
                 dict: self.dict.clone(),
                 debug: self.debug.get(),
+                pos: OnceCell::new(),
+                word_fields: OnceCell::new(),
             };
             ary.push(rb_m)?;
         }
@@ -259,36 +254,76 @@ impl RbStatefulTokenizer {
 
 // ---------- Morpheme ----------
 
-#[magnus::wrap(class = "Kabosu::Morpheme")]
-struct RbMorpheme {
-    surface: String,
-    pos: Vec<String>,
-    pos_id: u16,
+/// Lazily-resolved word fields from the dictionary.
+/// These are only loaded when first accessed, avoiding string allocations
+/// for morphemes whose fields are never read.
+struct LazyWordFields {
     dictionary_form: String,
     normalized_form: String,
     reading_form: String,
+    synonym_group_ids: Vec<u32>,
+}
+
+#[magnus::wrap(class = "Kabosu::Morpheme")]
+struct RbMorpheme {
+    // Eagerly populated (cheap or required from input text)
+    surface: String,
+    pos_id: u16,
+    word_id_raw: u32,
     is_oov: bool,
     dictionary_id: i32,
-    word_id_raw: u32,
     is_system: bool,
     is_user: bool,
     begin: usize,
     end: usize,
     begin_c: usize,
     end_c: usize,
-    synonym_group_ids: Vec<u32>,
     total_cost: i32,
     dict: Arc<JapaneseDictionary>,
     debug: bool,
+
+    // Lazily resolved from grammar
+    pos: OnceCell<Vec<String>>,
+    // Lazily resolved from dictionary word info
+    word_fields: OnceCell<LazyWordFields>,
 }
 
 impl RbMorpheme {
+    fn resolve_word_fields(&self) -> &LazyWordFields {
+        self.word_fields.get_or_init(|| {
+            let wid = WordId::from_raw(self.word_id_raw);
+            match self.dict.lexicon().get_word_info(wid) {
+                Ok(info) => LazyWordFields {
+                    dictionary_form: info.dictionary_form().to_string(),
+                    normalized_form: info.normalized_form().to_string(),
+                    reading_form: info.reading_form().to_string(),
+                    synonym_group_ids: info.synonym_group_ids().to_vec(),
+                },
+                Err(_) => LazyWordFields {
+                    dictionary_form: self.surface.clone(),
+                    normalized_form: self.surface.clone(),
+                    reading_form: self.surface.clone(),
+                    synonym_group_ids: vec![],
+                },
+            }
+        })
+    }
+
     fn surface(&self) -> &str {
         &self.surface
     }
 
     fn part_of_speech(&self) -> Vec<String> {
-        self.pos.clone()
+        self.pos
+            .get_or_init(|| {
+                self.dict
+                    .grammar()
+                    .pos_components(self.pos_id)
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect()
+            })
+            .clone()
     }
 
     fn part_of_speech_id(&self) -> u16 {
@@ -296,15 +331,15 @@ impl RbMorpheme {
     }
 
     fn dictionary_form(&self) -> &str {
-        &self.dictionary_form
+        &self.resolve_word_fields().dictionary_form
     }
 
     fn normalized_form(&self) -> &str {
-        &self.normalized_form
+        &self.resolve_word_fields().normalized_form
     }
 
     fn reading_form(&self) -> &str {
-        &self.reading_form
+        &self.resolve_word_fields().reading_form
     }
 
     fn is_oov(&self) -> bool {
@@ -336,9 +371,10 @@ impl RbMorpheme {
     }
 
     fn synonym_group_ids(&self) -> RArray {
+        let ids = &self.resolve_word_fields().synonym_group_ids;
         let ruby = Ruby::get().unwrap();
-        let ary = ruby.ary_new_capa(self.synonym_group_ids.len());
-        for &id in &self.synonym_group_ids {
+        let ary = ruby.ary_new_capa(ids.len());
+        for &id in ids {
             let _ = ary.push(id);
         }
         ary
@@ -372,24 +408,21 @@ impl RbMorpheme {
             let wid = m.word_id();
             let rb_m = RbMorpheme {
                 surface: m.surface().to_string(),
-                pos: m.part_of_speech().iter().map(|s| s.to_string()).collect(),
                 pos_id: m.part_of_speech_id(),
-                dictionary_form: m.dictionary_form().to_string(),
-                normalized_form: m.normalized_form().to_string(),
-                reading_form: m.reading_form().to_string(),
+                word_id_raw: wid.as_raw(),
                 is_oov: m.is_oov(),
                 dictionary_id: m.dictionary_id(),
-                word_id_raw: wid.as_raw(),
                 is_system: wid.is_system(),
                 is_user: wid.is_user(),
                 begin: m.begin(),
                 end: m.end(),
                 begin_c: m.begin_c(),
                 end_c: m.end_c(),
-                synonym_group_ids: m.synonym_group_ids().to_vec(),
                 total_cost: m.total_cost(),
                 dict: self.dict.clone(),
                 debug: self.debug,
+                pos: OnceCell::new(),
+                word_fields: OnceCell::new(),
             };
             ary.push(rb_m)?;
         }
@@ -398,10 +431,10 @@ impl RbMorpheme {
 
     fn inspect(&self) -> String {
         format!(
-            "#<Kabosu::Morpheme surface=\"{}\" pos=[{}] reading=\"{}\" {}..{}>",
+            "#<Kabosu::Morpheme surface=\"{}\" pos_id={} reading=\"{}\" {}..{}>",
             self.surface,
-            self.pos.join(", "),
-            self.reading_form,
+            self.pos_id,
+            self.resolve_word_fields().reading_form,
             self.begin_c,
             self.end_c,
         )
