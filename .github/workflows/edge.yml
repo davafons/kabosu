@@ -1,0 +1,40 @@
+name: Edge
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  edge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oxidize-rb/actions/setup-ruby-and-rust@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+          cargo-cache: true
+
+      - name: Set dev version
+        run: |
+          # Generate version like 0.1.0.dev.20260225.abcdef1
+          base_version=$(ruby -r ./lib/kabosu/version -e "puts Kabosu::VERSION")
+          date=$(date -u +%Y%m%d)
+          sha=$(git rev-parse --short HEAD)
+          dev_version="${base_version}.dev.${date}.${sha}"
+
+          # Patch version.rb for the dev build
+          sed -i "s/VERSION = \".*\"/VERSION = \"${dev_version}\"/" lib/kabosu/version.rb
+          echo "DEV_VERSION=${dev_version}" >> "$GITHUB_ENV"
+          echo "Publishing edge version: ${dev_version}"
+
+      - name: Build gem
+        run: gem build kabosu.gemspec
+
+      - name: Push to RubyGems
+        env:
+          GEM_HOST_API_KEY: ${{ secrets.RUBYGEMS_API_KEY }}
+        run: |
+          gem push kabosu-*.gem

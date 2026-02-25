@@ -13,5 +13,6 @@ Rake::TestTask.new(:test) do |t|
 end
 
 load File.expand_path("lib/kabosu/tasks.rake", __dir__)
+load File.expand_path("lib/kabosu/release.rake", __dir__)
 
 task default: %i[compile test]
