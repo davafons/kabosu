@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="logo.png" alt="Kabosu" width="150">
+  <img src="logo.png" alt="Kabosu" width="200">
 </p>
 
 <h1 align="center">Kabosu</h1>
@@ -11,59 +11,6 @@
 </p>
 
 Ruby bindings for [sudachi.rs](https://github.com/WorksApplications/sudachi.rs), a Rust implementation of the [Sudachi](https://github.com/WorksApplications/Sudachi) Japanese morphological analyzer.
-
-## Usage
-
-```ruby
-require "kabosu"
-
-# Tokenize Japanese text
-morphemes = Kabosu.tokenize("東京都に住んでいる")
-
-morphemes.surfaces       # => ["東京都", "に", "住ん", "で", "いる"]
-morphemes.readings       # => ["トウキョウト", "ニ", "スン", "デ", "イル"]
-morphemes.dictionary_forms # => ["東京都", "に", "住む", "で", "居る"]
-
-morphemes.each do |m|
-  puts "#{m.surface}\t#{m.part_of_speech.join(',')}\t#{m.reading_form}"
-end
-```
-
-
-## Installation
-
-Requirements:
-- Ruby >= 3.1
-- Rust toolchain (for compiling the native extension)
-
-Add to your Gemfile:
-
-```ruby
-gem "kabosu"
-```
-
-Then install and download a [Sudachi dictionary](https://github.com/WorksApplications/SudachiDict):
-
-```sh
-bundle install
-bundle exec rake kabosu:install[small]  # or core, full
-```
-
-Dictionary editions (from smallest to largest): `small`, `core`, `full`. See the [SudachiDict documentation](https://github.com/WorksApplications/SudachiDict?tab=readme-ov-file#dictionary-types) for details on the differences between editions.
-
-## Dictionary management
-
-Rake tasks for managing Sudachi dictionaries:
-
-```sh
-rake kabosu:install[small]     # Install a dictionary (VERSION=YYYYMMDD for a specific version)
-rake kabosu:list               # List installed dictionaries
-rake kabosu:versions           # Show available versions from GitHub
-rake kabosu:path               # Show path to best available dictionary
-rake kabosu:remove[small]      # Remove a dictionary (VERSION=YYYYMMDD for a specific version)
-```
-
-Dictionaries are stored in `~/.kabosu/dict/` by default. Set `KABOSU_DICT_DIR` to customize.
 
 ## Usage
 
@@ -99,7 +46,41 @@ morpheme.system?             # => true             - from system dictionary?
 morpheme.user?               # => false            - from user dictionary?
 ```
 
-### Tokenization modes
+## Installation
+
+- Ruby >= 3.1
+- Rust toolchain (for compiling the native extension)
+
+Add to your Gemfile:
+
+```ruby
+gem "kabosu"
+```
+
+Then install and download a [Sudachi dictionary](https://github.com/WorksApplications/SudachiDict):
+
+```sh
+bundle install
+bundle exec rake kabosu:install[small]  # or core, full
+```
+
+Dictionary editions (from smallest to largest): `small`, `core`, `full`. See the [SudachiDict documentation](https://github.com/WorksApplications/SudachiDict?tab=readme-ov-file#dictionary-types) for details on the differences between editions.
+
+## Dictionary management
+
+Rake tasks for managing Sudachi dictionaries:
+
+```sh
+rake kabosu:install[small]     # Install a dictionary (VERSION=YYYYMMDD for a specific version)
+rake kabosu:list               # List installed dictionaries
+rake kabosu:versions           # Show available versions from GitHub
+rake kabosu:path               # Show path to best available dictionary
+rake kabosu:remove[small]      # Remove a dictionary (VERSION=YYYYMMDD for a specific version)
+```
+
+Dictionaries are stored in `~/.kabosu/dict/` by default. Set `KABOSU_DICT_DIR` to customize.
+
+## Tokenization modes
 
 Sudachi provides three [split modes](https://github.com/WorksApplications/Sudachi?tab=readme-ov-file#the-modes-of-splitting):
 
@@ -114,7 +95,7 @@ Kabosu.tokenize("東京都", mode: "A").surfaces  # => ["東京", "都"]
 Kabosu.tokenize("東京都", mode: "C").surfaces  # => ["東京都"]
 ```
 
-### Dictionary and Tokenizer API
+## Dictionary and Tokenizer Internal API
 
 For more control over dictionary and tokenizer configuration, create them directly:
 
@@ -137,20 +118,18 @@ Measured on an AMD Ryzen 7 5800X, `full` dictionary edition, Ruby 3.4, Rust 1.84
 
 | Scenario | Rust | Ruby | Ratio |
 |---|---|---|---|
-| Sentence-by-sentence (mode C) | 5.088s | 5.981s | 1.2x |
-| Sentence-by-sentence (mode A) | 5.145s | 6.216s | 1.2x |
-| Sentence-by-sentence (mode B) | 5.249s | 6.257s | 1.2x |
-| **Throughput** | **1.80 MB/s** | **1.45 MB/s** | **1.2x** |
+| Full text (mode C) | 4.822s | 6.577s | 1.4x |
+| Full text (mode A) | 4.896s | 6.660s | 1.4x |
+| Full text (mode B) | 4.839s | 6.539s | 1.4x |
+| **Throughput** | **1.91 MB/s** | **1.37 MB/s** | **1.4x** |
 
-The Ruby bindings add ~20% overhead over raw Rust, primarily from FFI boundary crossings and Ruby object allocation for each morpheme.
+The Ruby bindings add ~40% overhead over raw Rust, primarily from FFI boundary crossings and Ruby object allocation for each morpheme.
 
 To reproduce these results, run:
 
 ```sh
 bundle exec ruby bench/start
 ```
-
-### Profiling
 
 To generate flamegraph SVGs alongside the benchmark:
 
