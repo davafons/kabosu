@@ -111,68 +111,40 @@ tok_c.tokenize("東京都").surfaces  # => ["東京都"]
 Modes are symbols only (`:a`, `:b`, `:c` or `Kabosu::MODE_A/B/C`).
 Invalid modes now raise `ArgumentError` (for example, `"A"`).
 
-## Dictionary and Tokenizer Internal API
-
-For more control over dictionary and tokenizer configuration, create them directly:
+## Advanced Use Cases
 
 ```ruby
+# Custom system dictionary + optional user dictionaries
 dict = Kabosu::Dictionary.new(
   system_dict: "/path/to/custom/system.dic",
   user_dicts: ["/path/to/domain.dic", "/path/to/names.dic"]
 )
+
+# Create tokenizer with explicit mode/fields
 tokenizer = dict.create(mode: :c, fields: %i[surface pos_id reading_form])
 
-morphemes = tokenizer.tokenize("国会議事堂前駅")
-# MorphemeList is lazy: morphemes are hydrated on first indexed/iterated access.
-# surfaces uses a fast path and does not force full morpheme hydration.
-morphemes.surfaces
-morphemes.first.part_of_speech
+# Tokenize (returns MorphemeList; lazily hydrates morphemes)
+list = tokenizer.tokenize("国会議事堂前駅")
+list.surfaces
+list.first.part_of_speech
 
-# Lexicon lookup (prefix matches from position 0), returns MorphemeList
+# Dictionary prefix lookup
 dict.lookup("東京都").surfaces
 
-# Morpheme split returns MorphemeList
+# Morpheme split
 m = tokenizer.tokenize("東京都").first
 m.split(mode: :a).surfaces
 
-# Native bulk extraction helpers (fewer Ruby<->Rust crossings)
+# Bulk extractors
 tokenizer.tokenize_surfaces("東京都に住んでいる")
 tokenizer.tokenize_readings("東京都に住んでいる")
 tokenizer.tokenize_dictionary_forms("東京都に住んでいる")
 tokenizer.tokenize_normalized_forms("東京都に住んでいる")
 
-# Sentence splitting options
+# Sentence splitting
 Kabosu.split_sentences("東京都に住んでいる。大阪も好きだ。", ranges: true)
 Kabosu.split_sentences("長い文...", limit: 12, with_checker: true)
-
-# ranges: true returns SentenceRange objects
-ranges = Kabosu.split_sentences("東京都に住んでいる。", ranges: true)
-ranges.first.start
-ranges.first.end
-ranges.first.text
 ```
-
-Dictionary initialization failures raise typed errors:
-- `Kabosu::ConfigError` for configuration issues
-- `Kabosu::DictionaryError` for dictionary loading issues
-
-Runtime failures in analysis APIs are also typed:
-- `Kabosu::TokenizationError` for tokenization/split failures
-- `Kabosu::SentenceSplitError` for sentence splitter failures
-- `Kabosu::LookupError` for dictionary lookup failures
-
-## Public API Contract
-
-| API | Parameters | Return | Notes |
-|---|---|---|---|
-| `Kabosu::Dictionary.new` | `config: String?`, `system_dict: String?`, `user_dicts: Array<String>?` | `Kabosu::Dictionary` | One of `config` or `system_dict` is required |
-| `Dictionary#create` | `mode: :a|:b|:c`, `fields: Array<String\|Symbol>?`, `debug: bool`, `projection: nil` | `Kabosu::Tokenizer` | Unknown kwargs raise `ArgumentError`; `projection` currently raises `NotImplementedError` |
-| `Dictionary#lookup` | `text: String` | `Kabosu::MorphemeList` | Prefix lookup from byte offset 0 |
-| `Tokenizer#tokenize` | `text: String` | `Kabosu::MorphemeList` | Lazy morpheme hydration; raises `Kabosu::TokenizationError` on native failures |
-| `Tokenizer#tokenize_surfaces/readings/dictionary_forms/normalized_forms` | `text: String` | `Array<String>` | Raises `Kabosu::TokenizationError` on native failures |
-| `Morpheme#split` | `mode: :a|:b|:c`, `add_single: bool` | `Kabosu::MorphemeList` | Standardized with `tokenize` return type |
-| `Kabosu.split_sentences` | `text: String`, `limit: Integer?`, `with_checker: bool`, `ranges: bool`, `dictionary: String?` | `Array<String>` or `Array<Kabosu::SentenceRange>` | `limit` must be `>= 1` |
-| `Kabosu.tokenize` | `text: String`, `tokenizer: Kabosu::Tokenizer` | `Kabosu::MorphemeList` | No hidden global tokenizer cache |
 
 ## Benchmarks
 
@@ -184,15 +156,29 @@ This benchmark uses [Wagahai wa Neko de Aru](https://www.aozora.gr.jp/cards/0001
 
 Measured on an AMD Ryzen 7 5800X, `full` dictionary edition, Ruby 3.4, Rust 1.84:
 
+Single-thread (10 iterations):
+
 | Scenario | Rust | Ruby | Ratio |
 |---|---|---|---|
-| split_sentences | 1.597s | 1.677s | 1.0x |
-| tokenize (mode C) | 3.274s | 4.034s | 1.2x |
-| tokenize (mode A) | 3.429s | 4.273s | 1.2x |
-| tokenize (mode B) | 3.465s | 4.297s | 1.2x |
-| **Throughput** | **2.66 MB/s** | **2.18 MB/s** | **1.2x** |
+| split_sentences | 1.550s | 1.615s | 1.0x |
+| tokenize (mode C) | 3.148s | 3.395s | 1.1x |
+| tokenize (mode A) | 3.227s | 3.525s | 1.1x |
+| tokenize (mode B) | 3.226s | 3.582s | 1.1x |
+| **Throughput** | **2.94 MB/s** | **2.69 MB/s** | **1.1x** |
 
-The Ruby bindings add ~20% overhead over raw Rust, primarily from FFI boundary crossings and Ruby object allocation for each morpheme.
+Multithread (8 threads x 20,000 requests):
+
+| Scenario | Rust | Ruby | Ratio |
+|---|---|---|---|
+| rails-style shared tokenizer | 1.475s | 2.101s | 1.4x |
+| tokenizer per thread | 1.381s | 2.154s | 1.6x |
+| **Throughput ST** | **20.44 MB/s** | **14.35 MB/s** | **1.4x** |
+| **Throughput PT** | **21.84 MB/s** | **14.00 MB/s** | **1.6x** |
+
+Notes:
+- `shared tokenizer` matches Rails-style access where all request threads call one tokenizer instance.
+- `per thread` creates one tokenizer per worker thread.
+- Ratios are `Ruby / Rust`, and values vary by CPU, Ruby version, and dictionary edition.
 
 To reproduce these results, run:
 
