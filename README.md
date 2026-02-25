@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="logo.png" alt="Kabosu" width="200">
+  <img src="logo.png" alt="Kabosu" width="150">
 </p>
 
 <h1 align="center">Kabosu</h1>
