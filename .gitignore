@@ -1,10 +1,17 @@
 /.bundle/
+/vendor/bundle/
 /pkg/
 /tmp/
 /target/
+/ext/kabosu/target/
 /lib/kabosu/kabosu.so
 /lib/kabosu/kabosu.bundle
+/lib/kabosu/kabosu.dll
 Gemfile.lock
+Cargo.lock
 *.o
 *.so
 *.bundle
+*.dll
+*.a
+*.gem
