@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="logo.png" alt="Kabosu" width="200">
+  <img src="logo.png" alt="Kabosu" width="150">
 </p>
 
 <h1 align="center">Kabosu</h1>
@@ -12,12 +12,29 @@
 
 Ruby bindings for [sudachi.rs](https://github.com/WorksApplications/sudachi.rs), a Rust implementation of the [Sudachi](https://github.com/WorksApplications/Sudachi) Japanese morphological analyzer.
 
-## Requirements
+## Usage
 
-- Ruby >= 3.1
-- Rust toolchain (for compiling the native extension)
+```ruby
+require "kabosu"
+
+# Tokenize Japanese text
+morphemes = Kabosu.tokenize("東京都に住んでいる")
+
+morphemes.surfaces       # => ["東京都", "に", "住ん", "で", "いる"]
+morphemes.readings       # => ["トウキョウト", "ニ", "スン", "デ", "イル"]
+morphemes.dictionary_forms # => ["東京都", "に", "住む", "で", "居る"]
+
+morphemes.each do |m|
+  puts "#{m.surface}\t#{m.part_of_speech.join(',')}\t#{m.reading_form}"
+end
+```
+
 
 ## Installation
+
+Requirements:
+- Ruby >= 3.1
+- Rust toolchain (for compiling the native extension)
 
 Add to your Gemfile:
 
@@ -48,22 +65,6 @@ rake kabosu:remove[small]      # Remove a dictionary (VERSION=YYYYMMDD for a spe
 
 Dictionaries are stored in `~/.kabosu/dict/` by default. Set `KABOSU_DICT_DIR` to customize.
 
-## Usage
-
-```ruby
-require "kabosu"
-
-# Tokenize Japanese text (auto-discovers installed dictionary)
-morphemes = Kabosu.tokenize("東京都に住んでいる")
-
-morphemes.surfaces       # => ["東京都", "に", "住ん", "で", "いる"]
-morphemes.readings       # => ["トウキョウト", "ニ", "スン", "デ", "イル"]
-morphemes.dictionary_forms # => ["東京都", "に", "住む", "で", "居る"]
-
-morphemes.each do |m|
-  puts "#{m.surface}\t#{m.part_of_speech.join(',')}\t#{m.reading_form}"
-end
-```
 
 ### Tokenization modes
 
