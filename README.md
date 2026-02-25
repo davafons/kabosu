@@ -54,6 +54,10 @@ morpheme.begin_c             # => 0                - start character offset
 morpheme.end_c               # => 3                - end character offset
 morpheme.system?             # => true             - from system dictionary?
 morpheme.user?               # => false            - from user dictionary?
+
+# Split text into natural Japanese sentence boundaries
+Kabosu.split_sentences("東京都に住んでいる。大阪も好きだ。")
+# => ["東京都に住んでいる。", "大阪も好きだ。"]
 ```
 
 ## Installation
@@ -109,7 +113,6 @@ tok_c.tokenize("東京都").surfaces  # => ["東京都"]
 ```
 
 Modes are symbols only (`:a`, `:b`, `:c` or `Kabosu::MODE_A/B/C`).
-Invalid modes now raise `ArgumentError` (for example, `"A"`).
 
 ## Advanced Use Cases
 
@@ -134,12 +137,6 @@ dict.lookup("東京都").surfaces
 # Morpheme split
 m = tokenizer.tokenize("東京都").first
 m.split(mode: :a).surfaces
-
-# Bulk extractors
-tokenizer.tokenize_surfaces("東京都に住んでいる")
-tokenizer.tokenize_readings("東京都に住んでいる")
-tokenizer.tokenize_dictionary_forms("東京都に住んでいる")
-tokenizer.tokenize_normalized_forms("東京都に住んでいる")
 
 # Sentence splitting
 Kabosu.split_sentences("東京都に住んでいる。大阪も好きだ。", ranges: true)
@@ -203,5 +200,6 @@ bundle exec rake kabosu:install # Install Sudachi dictionary
 
 bundle exec rake compile        # Build the native extension  
 bundle exec rake test           # Run tests
+
 bench/start                     # Run benchmarks
 ```

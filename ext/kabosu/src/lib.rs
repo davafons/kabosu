@@ -42,16 +42,6 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     // Kabosu::Tokenizer
     let tok_class = module.define_class("Tokenizer", ruby.class_object())?;
     tok_class.define_method("tokenize", method!(RbTokenizer::tokenize, 1))?;
-    tok_class.define_method("tokenize_surfaces", method!(RbTokenizer::tokenize_surfaces, 1))?;
-    tok_class.define_method("tokenize_readings", method!(RbTokenizer::tokenize_readings, 1))?;
-    tok_class.define_method(
-        "tokenize_dictionary_forms",
-        method!(RbTokenizer::tokenize_dictionary_forms, 1),
-    )?;
-    tok_class.define_method(
-        "tokenize_normalized_forms",
-        method!(RbTokenizer::tokenize_normalized_forms, 1),
-    )?;
     tok_class.define_method("mode", method!(RbTokenizer::mode, 0))?;
     tok_class.define_method("fields", method!(RbTokenizer::fields, 0))?;
     tok_class.define_method("debug?", method!(RbTokenizer::is_debug, 0))?;

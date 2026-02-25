@@ -147,18 +147,14 @@ class TokenizerTest < Minitest::Test
     assert_raises(NotImplementedError) { @dict.create(mode: :c, projection: :surface) }
   end
 
-  def test_bulk_extractors_match_regular_tokenize
-    input = "東京都に住んでいる"
+  def test_oov_forms_do_not_raise_and_fall_back_to_surface
+    input = "zzz"
     list = @tok_c.tokenize(input)
 
-    assert_equal list.surfaces, @tok_c.tokenize_surfaces(input)
-    assert_equal list.readings, @tok_c.tokenize_readings(input)
-    assert_equal list.dictionary_forms, @tok_c.tokenize_dictionary_forms(input)
-    assert_equal list.normalized_forms, @tok_c.tokenize_normalized_forms(input)
-  end
-
-  def test_bulk_extractors_reject_non_string_input
-    assert_raises(ArgumentError) { @tok_c.tokenize_surfaces(123) }
+    assert_equal [input], list.surfaces
+    assert_equal [input], list.readings
+    assert_equal [input], list.dictionary_forms
+    assert_equal [input], list.normalized_forms
   end
 
   # ── debug? (immutable, set at creation) ──

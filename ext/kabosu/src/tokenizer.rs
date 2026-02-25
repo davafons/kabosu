@@ -8,7 +8,6 @@ use sudachi::analysis::stateful_tokenizer::StatefulTokenizer;
 use sudachi::analysis::Mode;
 use sudachi::dic::dictionary::JapaneseDictionary;
 use sudachi::dic::subset::InfoSubset;
-use sudachi::dic::word_id::WordId;
 use sudachi::prelude::MorphemeList;
 
 use crate::errors::sudachi_error;
@@ -168,20 +167,6 @@ impl RbTokenizer {
         }
     }
 
-    fn collect_strings<F>(&self, text: String, mut project: F) -> Result<RArray, Error>
-    where
-        F: FnMut(&MorphemeData) -> String,
-    {
-        let ruby = Ruby::get().unwrap();
-        let analyzed = self.analyze(text)?;
-        let ary = ruby.ary_new_capa(analyzed.morphemes.len());
-        for data in analyzed.morphemes {
-            let projected = project(&data);
-            ary.push(ruby.str_new(&projected))?;
-        }
-        Ok(ary)
-    }
-
     pub(crate) fn tokenize(&self, text: String) -> Result<RbTokenBatch, Error> {
         let analyzed = self.analyze(text)?;
         Ok(RbTokenBatch::new(
@@ -190,40 +175,6 @@ impl RbTokenizer {
             self.debug,
             analyzed.internal_cost,
         ))
-    }
-
-    pub(crate) fn tokenize_surfaces(&self, text: String) -> Result<RArray, Error> {
-        self.collect_strings(text, |data| data.surface.clone())
-    }
-
-    pub(crate) fn tokenize_readings(&self, text: String) -> Result<RArray, Error> {
-        let lexicon = self.pool.dict.lexicon();
-        self.collect_strings(text, |data| {
-            lexicon
-                .get_word_info(WordId::from_raw(data.word_id_raw))
-                .map(|info| info.reading_form().to_string())
-                .unwrap_or_else(|_| data.surface.clone())
-        })
-    }
-
-    pub(crate) fn tokenize_dictionary_forms(&self, text: String) -> Result<RArray, Error> {
-        let lexicon = self.pool.dict.lexicon();
-        self.collect_strings(text, |data| {
-            lexicon
-                .get_word_info(WordId::from_raw(data.word_id_raw))
-                .map(|info| info.dictionary_form().to_string())
-                .unwrap_or_else(|_| data.surface.clone())
-        })
-    }
-
-    pub(crate) fn tokenize_normalized_forms(&self, text: String) -> Result<RArray, Error> {
-        let lexicon = self.pool.dict.lexicon();
-        self.collect_strings(text, |data| {
-            lexicon
-                .get_word_info(WordId::from_raw(data.word_id_raw))
-                .map(|info| info.normalized_form().to_string())
-                .unwrap_or_else(|_| data.surface.clone())
-        })
     }
 
     pub(crate) fn mode(&self) -> String {

@@ -13,6 +13,9 @@ use crate::parsing::parse_mode;
 #[derive(Clone)]
 pub(crate) struct MorphemeData {
     pub(crate) surface: String,
+    pub(crate) dictionary_form: String,
+    pub(crate) normalized_form: String,
+    pub(crate) reading_form: String,
     pub(crate) pos_id: u16,
     pub(crate) word_id_raw: u32,
     pub(crate) is_oov: bool,
@@ -37,6 +40,9 @@ where
 
     MorphemeData {
         surface,
+        dictionary_form: m.dictionary_form().to_string(),
+        normalized_form: m.normalized_form().to_string(),
+        reading_form: m.reading_form().to_string(),
         pos_id: m.part_of_speech_id(),
         word_id_raw: m.word_id().as_raw(),
         is_oov: m.is_oov(),
@@ -84,9 +90,6 @@ pub(crate) struct RbMorpheme {
 }
 
 struct LazyWordFields {
-    dictionary_form: String,
-    normalized_form: String,
-    reading_form: String,
     synonym_group_ids: Vec<u32>,
     dictionary_form_word_id: i32,
     head_word_length: usize,
@@ -96,14 +99,31 @@ struct LazyWordFields {
 }
 
 impl RbMorpheme {
+    fn fallback_word_fields(&self) -> LazyWordFields {
+        LazyWordFields {
+            synonym_group_ids: Vec::new(),
+            dictionary_form_word_id: -1,
+            head_word_length: self.data.surface.chars().count(),
+            a_unit_split: Vec::new(),
+            b_unit_split: Vec::new(),
+            word_structure: Vec::new(),
+        }
+    }
+
     fn resolve_word_fields(&self) -> &LazyWordFields {
         self.word_fields.get_or_init(|| {
+            if self.data.is_oov || self.data.dictionary_id < 0 {
+                return self.fallback_word_fields();
+            }
+
             let wid = WordId::from_raw(self.data.word_id_raw);
-            match self.dict.lexicon().get_word_info(wid) {
-                Ok(info) => LazyWordFields {
-                    dictionary_form: info.dictionary_form().to_string(),
-                    normalized_form: info.normalized_form().to_string(),
-                    reading_form: info.reading_form().to_string(),
+
+            let info_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                self.dict.lexicon().get_word_info(wid)
+            }));
+
+            match info_result {
+                Ok(Ok(info)) => LazyWordFields {
                     synonym_group_ids: info.synonym_group_ids().to_vec(),
                     dictionary_form_word_id: info.dictionary_form_word_id(),
                     head_word_length: info.head_word_length(),
@@ -111,28 +131,25 @@ impl RbMorpheme {
                     b_unit_split: info.b_unit_split().iter().map(WordId::as_raw).collect(),
                     word_structure: info.word_structure().iter().map(WordId::as_raw).collect(),
                 },
-                Err(_) => LazyWordFields {
-                    dictionary_form: self.data.surface.clone(),
-                    normalized_form: self.data.surface.clone(),
-                    reading_form: self.data.surface.clone(),
-                    synonym_group_ids: Vec::new(),
-                    dictionary_form_word_id: -1,
-                    head_word_length: self.data.surface.chars().count(),
-                    a_unit_split: Vec::new(),
-                    b_unit_split: Vec::new(),
-                    word_structure: Vec::new(),
-                },
+                _ => self.fallback_word_fields(),
             }
         })
     }
 
     fn split_ids_from_lexicon(&self, mode: Mode) -> Result<Vec<u32>, Error> {
-        let wid = WordId::from_raw(self.data.word_id_raw);
-        if wid.is_oov() {
+        if self.data.is_oov || self.data.dictionary_id < 0 {
             return Ok(Vec::new());
         }
+        let wid = WordId::from_raw(self.data.word_id_raw);
 
-        let info = self.dict.lexicon().get_word_info(wid).map_err(sudachi_error)?;
+        let info_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.dict.lexicon().get_word_info(wid)
+        }));
+        let info = match info_result {
+            Ok(Ok(info)) => info,
+            Ok(Err(e)) => return Err(sudachi_error(e)),
+            Err(_) => return Err(sudachi_error("panic while reading word info for split")),
+        };
         let ids = match mode {
             Mode::A => info.a_unit_split(),
             Mode::B => info.b_unit_split(),
@@ -174,7 +191,14 @@ impl RbMorpheme {
 
         for (i, &raw_wid) in split_ids.iter().enumerate() {
             let wid = WordId::from_raw(raw_wid);
-            let info = self.dict.lexicon().get_word_info(wid).map_err(sudachi_error)?;
+            let info_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                self.dict.lexicon().get_word_info(wid)
+            }));
+            let info = match info_result {
+                Ok(Ok(info)) => info,
+                Ok(Err(e)) => return Err(sudachi_error(e)),
+                Err(_) => return Err(sudachi_error("panic while reading child word info for split")),
+            };
 
             // head_word_length is in codepoints; clamp to remaining characters.
             let mut span_chars = info.head_word_length();
@@ -190,6 +214,9 @@ impl RbMorpheme {
 
             let child = MorphemeData {
                 surface: surface[start_byte..end_byte].to_string(),
+                dictionary_form: info.dictionary_form().to_string(),
+                normalized_form: info.normalized_form().to_string(),
+                reading_form: info.reading_form().to_string(),
                 pos_id: info.pos_id(),
                 word_id_raw: raw_wid,
                 is_oov: wid.is_oov(),
@@ -230,15 +257,15 @@ impl RbMorpheme {
     }
 
     pub(crate) fn dictionary_form(&self) -> &str {
-        &self.resolve_word_fields().dictionary_form
+        &self.data.dictionary_form
     }
 
     pub(crate) fn normalized_form(&self) -> &str {
-        &self.resolve_word_fields().normalized_form
+        &self.data.normalized_form
     }
 
     pub(crate) fn reading_form(&self) -> &str {
-        &self.resolve_word_fields().reading_form
+        &self.data.reading_form
     }
 
     pub(crate) fn is_oov(&self) -> bool {

@@ -162,47 +162,6 @@ module Kabosu
     rescue RuntimeError => e
       raise TokenizationError.new(e.message), cause: e
     end
-
-    alias_method :_tokenize_surfaces, :tokenize_surfaces
-    alias_method :_tokenize_readings, :tokenize_readings
-    alias_method :_tokenize_dictionary_forms, :tokenize_dictionary_forms
-    alias_method :_tokenize_normalized_forms, :tokenize_normalized_forms
-
-    def tokenize_surfaces(text)
-      unless text.is_a?(String)
-        raise ArgumentError, "text must be a String"
-      end
-      _tokenize_surfaces(text)
-    rescue RuntimeError => e
-      raise TokenizationError.new(e.message), cause: e
-    end
-
-    def tokenize_readings(text)
-      unless text.is_a?(String)
-        raise ArgumentError, "text must be a String"
-      end
-      _tokenize_readings(text)
-    rescue RuntimeError => e
-      raise TokenizationError.new(e.message), cause: e
-    end
-
-    def tokenize_dictionary_forms(text)
-      unless text.is_a?(String)
-        raise ArgumentError, "text must be a String"
-      end
-      _tokenize_dictionary_forms(text)
-    rescue RuntimeError => e
-      raise TokenizationError.new(e.message), cause: e
-    end
-
-    def tokenize_normalized_forms(text)
-      unless text.is_a?(String)
-        raise ArgumentError, "text must be a String"
-      end
-      _tokenize_normalized_forms(text)
-    rescue RuntimeError => e
-      raise TokenizationError.new(e.message), cause: e
-    end
   end
 
   class Morpheme

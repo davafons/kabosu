@@ -64,6 +64,9 @@ impl RbDictionary {
 
             let data = MorphemeData {
                 surface: surface_slice.to_string(),
+                dictionary_form: info.dictionary_form().to_string(),
+                normalized_form: info.normalized_form().to_string(),
+                reading_form: info.reading_form().to_string(),
                 pos_id: info.pos_id(),
                 word_id_raw: entry.word_id.as_raw(),
                 is_oov: entry.word_id.is_oov(),
