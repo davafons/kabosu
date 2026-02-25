@@ -118,7 +118,7 @@ time_fmt = ->(t) { t ? "%.3fs" % t : "-" }
 
 %w[C A B].each do |mode|
   rt, rbt = rust_times[mode], ruby_times[mode]
-  puts "%-20s %12s %12s %10s" % ["Full text (mode #{mode})", time_fmt[rt], time_fmt[rbt], fmt[rt, rbt]]
+  puts "%-20s %12s %12s %10s" % ["Sentence-by-sentence (#{mode})", time_fmt[rt], time_fmt[rbt], fmt[rt, rbt]]
 end
 
 puts "%-20s %12s %12s %10s" % ["Throughput (MB/s)", rust_tp ? "%.2f" % rust_tp : "-", ruby_tp ? "%.2f" % ruby_tp : "-", fmt[ruby_tp, rust_tp]]

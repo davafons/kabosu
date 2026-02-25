@@ -8,6 +8,7 @@
   <a href="https://rubygems.org/gems/kabosu"><img src="https://img.shields.io/gem/v/kabosu" alt="Gem Version"></a>
   <a href="https://github.com/davafons/kabosu/actions/workflows/edge.yml"><img src="https://github.com/davafons/kabosu/actions/workflows/edge.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/davafons/kabosu/blob/main/LICENSE"><img src="https://img.shields.io/github/license/davafons/kabosu" alt="License"></a>
+  <a href="https://rubygems.org/gems/kabosu"><img src="https://img.shields.io/gem/dt/kabosu" alt="Downloads"></a>
 </p>
 
 Ruby bindings for [sudachi.rs](https://github.com/WorksApplications/sudachi.rs), a Rust implementation of the [Sudachi](https://github.com/WorksApplications/Sudachi) Japanese morphological analyzer.
@@ -118,12 +119,12 @@ Measured on an AMD Ryzen 7 5800X, `full` dictionary edition, Ruby 3.4, Rust 1.84
 
 | Scenario | Rust | Ruby | Ratio |
 |---|---|---|---|
-| Full text (mode C) | 4.822s | 6.577s | 1.4x |
-| Full text (mode A) | 4.896s | 6.660s | 1.4x |
-| Full text (mode B) | 4.839s | 6.539s | 1.4x |
-| **Throughput** | **1.91 MB/s** | **1.37 MB/s** | **1.4x** |
+| Sentence-by-sentence (mode C) | 5.363s | 5.921s | 1.1x |
+| Sentence-by-sentence (mode A) | 5.395s | 5.937s | 1.1x |
+| Sentence-by-sentence (mode B) | 5.575s | 5.988s | 1.1x |
+| **Throughput** | **1.73 MB/s** | **1.51 MB/s** | **1.1x** |
 
-The Ruby bindings add ~40% overhead over raw Rust, primarily from FFI boundary crossings and Ruby object allocation for each morpheme.
+The Ruby bindings add ~10% overhead over raw Rust, primarily from FFI boundary crossings and Ruby object allocation for each morpheme.
 
 To reproduce these results, run:
 
