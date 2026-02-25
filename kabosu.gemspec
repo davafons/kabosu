@@ -8,7 +8,7 @@ Gem::Specification.new do |spec|
   spec.description = "Kabosu provides Ruby bindings for sudachi.rs, " \
                      "a Rust implementation of the Sudachi Japanese morphological analyzer."
   spec.homepage = "https://github.com/davafons/kabosu"
-  spec.license = "MIT"
+  spec.license = "Apache-2.0"
   spec.required_ruby_version = ">= 3.1"
 
   spec.files = Dir["lib/**/*.{rb,rake}", "ext/**/*.{rs,toml,rb}", "Cargo.*", "LICENSE", "README.md"]

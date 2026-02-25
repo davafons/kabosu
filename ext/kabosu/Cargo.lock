@@ -170,7 +170,7 @@ checksum = "92ecc6618181def0457392ccd0ee51198e065e016d1d527a7ac1b6dc7c1f09d2"
 
 [[package]]
 name = "kabosu"
-version = "0.1.0"
+version = "0.6.10"
 dependencies = [
  "magnus",
  "sudachi",
@@ -410,8 +410,8 @@ checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 
 [[package]]
 name = "sudachi"
-version = "0.6.11-a1"
-source = "git+https://github.com/WorksApplications/sudachi.rs?branch=develop#5e8cc9250a712aa328a43381f7a9eb7f245bdd4a"
+version = "0.6.10"
+source = "git+https://github.com/WorksApplications/sudachi.rs?tag=v0.6.10#7e2f287bbfffc036421cf960802e41a696727747"
 dependencies = [
  "aho-corasick",
  "bitflags",

@@ -15,3 +15,5 @@ Cargo.lock
 *.dll
 *.a
 *.gem
+/bench/fixtures/*.txt
+/bench/rust_bench/target/

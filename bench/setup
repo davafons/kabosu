@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+#
+# Downloads benchmark fixture texts from Aozora Bunko (public domain Japanese literature).
+#
+# Usage: bench/setup
+#
+set -euo pipefail
+
+FIXTURES_DIR="$(cd "$(dirname "$0")/fixtures" && pwd)"
+mkdir -p "$FIXTURES_DIR"
+
+# "Wagahai wa Neko de Aru" (I Am a Cat) by Natsume Soseki
+# The de facto standard benchmark text for Japanese tokenizers.
+# Source: https://www.aozora.gr.jp/cards/000148/card789.html
+NEKO_URL="https://raw.githubusercontent.com/aozorabunko/aozorabunko/master/cards/000148/files/789_ruby_5639.zip"
+NEKO_OUTPUT="$FIXTURES_DIR/wagahai.txt"
+
+if [ -f "$NEKO_OUTPUT" ]; then
+  echo "Already exists: $NEKO_OUTPUT ($(wc -c < "$NEKO_OUTPUT") bytes)"
+else
+  echo "Downloading Wagahai wa Neko de Aru..."
+  TMPDIR=$(mktemp -d)
+  trap 'rm -rf "$TMPDIR"' EXIT
+
+  curl -sL "$NEKO_URL" -o "$TMPDIR/neko.zip"
+  unzip -q -o "$TMPDIR/neko.zip" -d "$TMPDIR"
+
+  # The zip contains a Shift_JIS encoded .txt file with Aozora markup.
+  # Convert to UTF-8 and strip ruby annotations + header/footer.
+  TXT_FILE=$(find "$TMPDIR" -name "*.txt" | head -1)
+
+  if [ -z "$TXT_FILE" ]; then
+    echo "Error: no .txt file found in zip" >&2
+    exit 1
+  fi
+
+  # Convert Shift_JIS to UTF-8, then extract only the body text:
+  # - Strip everything up to and including the second "---" delimiter
+  # - Strip footer (底本: onwards)
+  # - Remove Aozora ruby markup (《...》), ruby start markers (｜),
+  #   gaiji markers (※[...]), and structural annotations (［＃...］)
+  # - Remove blank lines
+  iconv -f SHIFT_JIS -t UTF-8 "$TXT_FILE" \
+    | sed '1,/^-------------------------------------------------------$/d' \
+    | sed '1,/^-------------------------------------------------------$/d' \
+    | sed '/^底本：/,$d' \
+    | sed 's/《[^》]*》//g' \
+    | sed 's/｜//g' \
+    | sed 's/※［[^］]*］//g' \
+    | sed 's/［＃[^］]*］//g' \
+    | sed '/^$/d' \
+    | sed '/^[[:space:]]*$/d' \
+    > "$NEKO_OUTPUT"
+
+  SIZE=$(wc -c < "$NEKO_OUTPUT")
+  LINES=$(wc -l < "$NEKO_OUTPUT")
+  echo "Created: $NEKO_OUTPUT ($SIZE bytes, $LINES lines)"
+fi

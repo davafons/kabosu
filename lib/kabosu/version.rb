@@ -1,3 +1,3 @@
 module Kabosu
-  VERSION = "0.1.1"
+  VERSION = "0.6.10"
 end
