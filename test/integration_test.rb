@@ -11,9 +11,9 @@ class IntegrationTest < Minitest::Test
 
   def setup
     super
-    @dict = Kabosu::Dictionary.new
-    @tok_c = @dict.create("C")
-    @tok_a = @dict.create("A")
+    @dict = Kabosu::Dictionary.new(system_dict: Kabosu::Dictionary.path)
+    @tok_c = @dict.create(mode: :c)
+    @tok_a = @dict.create(mode: :a)
   end
 
   # ── MorphemeList return type ──
@@ -49,6 +49,23 @@ class IntegrationTest < Minitest::Test
     # 住んでいる: A splits into 住ん, で, いる
     a = @tok_a.tokenize("住んでいる").surfaces
     assert_operator a.size, :>=, 2
+  end
+
+  def test_morpheme_split_preserves_original_offsets
+    parent = @tok_c.tokenize("東京都に住んでいる").first
+    split = parent.split(mode: :a)
+    refute_empty split
+
+    assert_equal parent.begin, split.first.begin
+    assert_equal parent.end, split.last.end
+    assert_equal parent.begin_c, split.first.begin_c
+    assert_equal parent.end_c, split.last.end_c
+  end
+
+  def test_morpheme_split_invalid_mode_raises
+    m = @tok_c.tokenize("東京").first
+    assert_raises(ArgumentError) { m.split(mode: :x) }
+    assert_raises(ArgumentError) { m.split(mode: "A") }
   end
 
   # ── Part of speech ──
@@ -109,6 +126,19 @@ class IntegrationTest < Minitest::Test
     end
   end
 
+  def test_word_info_additional_fields_have_expected_types
+    m = @tok_c.tokenize("東京都").first
+
+    assert_kind_of Integer, m.dictionary_form_word_id
+    assert_kind_of Integer, m.head_word_length
+    assert_kind_of Array, m.a_unit_split
+    assert_kind_of Array, m.b_unit_split
+    assert_kind_of Array, m.word_structure
+    assert m.a_unit_split.all? { _1.is_a?(Integer) }
+    assert m.b_unit_split.all? { _1.is_a?(Integer) }
+    assert m.word_structure.all? { _1.is_a?(Integer) }
+  end
+
   # ── OOV detection ──
 
   def test_common_words_are_not_oov
@@ -161,37 +191,75 @@ class IntegrationTest < Minitest::Test
   # ── Kabosu.tokenize convenience ──
 
   def test_convenience_tokenize_returns_morpheme_list
-    result = Kabosu.tokenize("東京")
+    result = Kabosu.tokenize("東京", tokenizer: @tok_c)
     assert_instance_of Kabosu::MorphemeList, result
   end
 
   def test_convenience_tokenize_mode_a_and_c_differ
-    a = Kabosu.tokenize("東京都", mode: "A").size
-    c = Kabosu.tokenize("東京都", mode: "C").size
+    a = Kabosu.tokenize("東京都", tokenizer: @tok_a).size
+    c = Kabosu.tokenize("東京都", tokenizer: @tok_c).size
     assert_operator a, :>, c
   end
 
-  def test_convenience_tokenize_caches_by_mode
-    t1 = Kabosu.tokenize("東京", mode: "A")
-    t2 = Kabosu.tokenize("東京", mode: "A")
-    # Result should be equal (same tokenizer reused)
-    assert_equal t1.surfaces, t2.surfaces
+  def test_convenience_tokenize_requires_explicit_tokenizer
+    assert_raises(ArgumentError) { Kabosu.tokenize("東京", tokenizer: "not-a-tokenizer") }
+    assert_raises(ArgumentError) { Kabosu.tokenize("東京") }
+  end
+
+  def test_convenience_tokenize_is_safe_across_threads_with_shared_tokenizer
+    threads = 8
+    iterations = 200
+    inputs = ["東京都に住んでいる", "大阪も好きだ", "食べました", "吾輩は猫である。"]
+    failures = Queue.new
+
+    workers = Array.new(threads) do |tid|
+      Thread.new do
+        iterations.times do |i|
+          text = inputs[(tid + i) % inputs.length]
+          surfaces = Kabosu.tokenize(text, tokenizer: @tok_c).surfaces.join
+          failures << "mismatch for #{text.inspect}: got #{surfaces.inspect}" unless surfaces == text
+        rescue StandardError => e
+          failures << "#{e.class}: #{e.message}"
+        end
+      end
+    end
+    workers.each(&:join)
+
+    assert failures.empty?, failures.size.times.map { failures.pop }.join("\n")
   end
 
   # ── Dictionary.new ──
 
-  def test_dictionary_new_no_args_auto_discovers
-    dict = Kabosu::Dictionary.new
-    assert_instance_of Kabosu::Dictionary, dict
+  def test_dictionary_new_no_args_raises
+    assert_raises(ArgumentError) { Kabosu::Dictionary.new }
   end
 
   def test_dictionary_new_with_explicit_path
-    path = Kabosu.dict_path
-    dict = Kabosu::Dictionary.new(dict: path)
+    path = Kabosu::Dictionary.path
+    dict = Kabosu::Dictionary.new(system_dict: path)
     assert_instance_of Kabosu::Dictionary, dict
   end
 
   def test_dictionary_new_with_invalid_path_raises
-    assert_raises(RuntimeError) { Kabosu::Dictionary.new(dict: "/nonexistent/system.dic") }
+    assert_raises(Kabosu::DictionaryError) { Kabosu::Dictionary.new(system_dict: "/nonexistent/system.dic") }
+  end
+
+  # ── Dictionary lookup ──
+
+  def test_dictionary_lookup_returns_prefix_matches
+    query = "東京都"
+    matches = @dict.lookup(query)
+
+    assert_instance_of Kabosu::MorphemeList, matches
+    assert_operator matches.size, :>, 0
+    assert matches.all? { _1.is_a?(Kabosu::Morpheme) }
+
+    matches.each do |m|
+      assert_equal 0, m.begin
+      assert_operator m.end, :<=, query.bytesize
+      assert query.start_with?(m.surface),
+        "Expected '#{m.surface}' to be a prefix of '#{query}'"
+      assert_equal m.surface.bytesize, m.end
+    end
   end
 end

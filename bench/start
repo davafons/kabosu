@@ -15,6 +15,8 @@ FIXTURE = File.join(BENCH_DIR, "fixtures", "wagahai.txt")
 RUST_DIR = File.join(BENCH_DIR, "rust_bench")
 
 PROFILE = ARGV.include?("--profile")
+MT_THREADS = (ENV["MT_THREADS"] || "8").to_i
+MT_REQUESTS_PER_THREAD = (ENV["MT_REQUESTS_PER_THREAD"] || "20000").to_i
 
 DICT_PATH = ENV["KABOSU_DICT"] || `cd #{ROOT_DIR} && bundle exec rake kabosu:path 2>/dev/null`.strip
 
@@ -85,6 +87,14 @@ if PROFILE
 
   rust_output = profile("#{rust_bin} #{FIXTURE}#{dict_arg}", "rust")
   ruby_output = profile("bundle exec ruby #{BENCH_DIR}/bench_tokenize.rb", "ruby")
+  rust_mt_output = run(
+    "cd #{RUST_DIR} && #{rust_bin} #{FIXTURE}#{dict_arg} --mt #{MT_THREADS} #{MT_REQUESTS_PER_THREAD}",
+    "Rust multithread benchmark..."
+  )
+  ruby_mt_output = run(
+    "cd #{ROOT_DIR} && bundle exec ruby bench/bench_multithread.rb #{MT_THREADS} #{MT_REQUESTS_PER_THREAD}",
+    "Ruby multithread benchmark..."
+  )
 
   puts "Open the SVGs in a browser for interactive flamegraphs."
   puts
@@ -94,34 +104,114 @@ else
   rust_cmd = "cd #{RUST_DIR} && cargo run --release -- #{FIXTURE}#{dict_arg}"
   rust_output = run(rust_cmd, "Rust benchmark...")
   ruby_output = run("cd #{ROOT_DIR} && bundle exec ruby bench/bench_tokenize.rb", "Ruby benchmark...")
+  rust_mt_output = run(
+    "cd #{RUST_DIR} && cargo run --release -- #{FIXTURE}#{dict_arg} --mt #{MT_THREADS} #{MT_REQUESTS_PER_THREAD}",
+    "Rust multithread benchmark..."
+  )
+  ruby_mt_output = run(
+    "cd #{ROOT_DIR} && bundle exec ruby bench/bench_multithread.rb #{MT_THREADS} #{MT_REQUESTS_PER_THREAD}",
+    "Ruby multithread benchmark..."
+  )
 end
 
-# --- Results ---
+# --- Parse results ---
 
-rust_times = {}
-rust_output.scan(/mode ([ABC])\):\s+([\d.]+)s/) { |mode, t| rust_times[mode] = t.to_f }
-rust_tp = rust_output[/Throughput:\s+([\d.]+)/, 1]&.to_f
+def parse_output(output)
+  results = {}
 
-ruby_times = {}
-ruby_output.scan(/mode ([ABC]).*?\(\s*([\d.]+)\)/) { |mode, t| ruby_times[mode] = t.to_f }
-ruby_tp = ruby_output[/Throughput:\s+([\d.]+)/, 1]&.to_f
+  # Rust format: "split_sentences:     0.042s  (10 iterations)"
+  # Rust format: "mode C:     4.123s  (10 iterations)"
+  output.scan(/(split_sentences|mode [ABC]):\s+([\d.]+)s/) do |label, t|
+    results[label] = t.to_f
+  end
+
+  # Ruby Benchmark.bm format: "split_sentences           0.042000   0.000000   0.042000 (  0.042000)"
+  # Ruby Benchmark.bm format: "mode C                    4.123000   0.000000   4.123000 (  4.123000)"
+  output.scan(/(split_sentences|mode [ABC])\s+[\d.]+\s+[\d.]+\s+[\d.]+\s+\(\s*([\d.]+)\)/) do |label, t|
+    results[label] = t.to_f
+  end
+
+  results["throughput"] = output[/Throughput:\s+([\d.]+)/, 1]&.to_f
+  # Multithread contract (Rust and Ruby):
+  # "shared tok:         0.184s  (8 threads x 1000 req)"
+  # "per-thread tok:     0.148s  (8 threads x 1000 req)"
+  # "Throughput ST: 8.14 MB/s (...)"
+  # "Throughput PT: 10.12 MB/s (...)"
+  results["shared tok"] = output[/shared tok:\s+([\d.]+)s/i, 1]&.to_f
+  results["per-thread tok"] = output[/per-thread tok:\s+([\d.]+)s/i, 1]&.to_f
+  results["throughput_st"] = output[/Throughput ST:\s+([\d.]+)/, 1]&.to_f
+  results["throughput_pt"] = output[/Throughput PT:\s+([\d.]+)/, 1]&.to_f
+  results
+end
+
+rust = parse_output(rust_output)
+ruby = parse_output(ruby_output)
+rust_mt = parse_output(rust_mt_output)
+ruby_mt = parse_output(ruby_mt_output)
+
+# --- Print results ---
 
 puts "=" * 60
 puts " Results (10 iterations)"
 puts "=" * 60
 puts
-puts "%-20s %12s %12s %10s" % ["", "Rust", "Ruby", "Ratio"]
-puts "-" * 56
 
-fmt = ->(r, rb) { rb && r && r > 0 ? "%.1fx" % (rb / r) : "-" }
-time_fmt = ->(t) { t ? "%.3fs" % t : "-" }
+time_fmt = ->(t) { t ? "%8.3fs" % t : "%8s" % "-" }
+ratio_fmt = ->(r, rb) {
+  if r && rb && r > 0
+    ratio = rb / r
+    "%.1fx" % ratio
+  else
+    "-"
+  end
+}
 
+puts "%-24s %10s %10s %8s" % ["", "Rust", "Ruby", "Ratio"]
+puts "-" * 54
+
+# Sentence splitting
+rs, rbs = rust["split_sentences"], ruby["split_sentences"]
+puts "%-24s %10s %10s %8s" % ["split_sentences", time_fmt[rs], time_fmt[rbs], ratio_fmt[rs, rbs]]
+
+# Tokenization per mode
 %w[C A B].each do |mode|
-  rt, rbt = rust_times[mode], ruby_times[mode]
-  puts "%-20s %12s %12s %10s" % ["Sentence-by-sentence (#{mode})", time_fmt[rt], time_fmt[rbt], fmt[rt, rbt]]
+  key = "mode #{mode}"
+  rt, rbt = rust[key], ruby[key]
+  puts "%-24s %10s %10s %8s" % ["tokenize (mode #{mode})", time_fmt[rt], time_fmt[rbt], ratio_fmt[rt, rbt]]
 end
 
-puts "%-20s %12s %12s %10s" % ["Throughput (MB/s)", rust_tp ? "%.2f" % rust_tp : "-", ruby_tp ? "%.2f" % ruby_tp : "-", fmt[ruby_tp, rust_tp]]
+puts "-" * 54
+
+# Throughput
+rtp, rbtp = rust["throughput"], ruby["throughput"]
+tp_fmt = ->(t) { t ? "%7.2f" % t : "%7s" % "-" }
+tp_ratio = rtp && rbtp && rbtp > 0 ? "%.1fx" % (rtp / rbtp) : "-"
+puts "%-24s %10s %10s %8s" % ["Throughput (MB/s)", tp_fmt[rtp], tp_fmt[rbtp], tp_ratio]
 
 puts
-puts "Ratio = Ruby / Rust (lower = less FFI overhead)"
+puts "Ratio = Ruby / Rust (lower = less overhead)"
+puts
+puts "=" * 60
+puts " Multithread Results (#{MT_THREADS} threads x #{MT_REQUESTS_PER_THREAD} requests)"
+puts "=" * 60
+puts
+puts "Scenarios:"
+puts "  shared tok     = Rails-style shared tokenizer object across all request threads"
+puts "  per-thread tok = one tokenizer instance per worker thread"
+puts
+puts "%-24s %10s %10s %8s" % ["", "Rust", "Ruby", "Ratio"]
+puts "-" * 54
+
+rmt_shared, rbmt_shared = rust_mt["shared tok"], ruby_mt["shared tok"]
+puts "%-24s %10s %10s %8s" % ["rails-style shared tok", time_fmt[rmt_shared], time_fmt[rbmt_shared], ratio_fmt[rmt_shared, rbmt_shared]]
+
+rmt_per_thread, rbmt_per_thread = rust_mt["per-thread tok"], ruby_mt["per-thread tok"]
+puts "%-24s %10s %10s %8s" % ["tokenizer per thread", time_fmt[rmt_per_thread], time_fmt[rbmt_per_thread], ratio_fmt[rmt_per_thread, rbmt_per_thread]]
+
+puts "-" * 54
+
+rtp_st, rbtp_st = rust_mt["throughput_st"], ruby_mt["throughput_st"]
+puts "%-24s %10s %10s %8s" % ["Throughput ST (MB/s)", tp_fmt[rtp_st], tp_fmt[rbtp_st], (rtp_st && rbtp_st && rbtp_st > 0 ? "%.1fx" % (rtp_st / rbtp_st) : "-")]
+
+rtp_pt, rbtp_pt = rust_mt["throughput_pt"], ruby_mt["throughput_pt"]
+puts "%-24s %10s %10s %8s" % ["Throughput PT (MB/s)", tp_fmt[rtp_pt], tp_fmt[rbtp_pt], (rtp_pt && rbtp_pt && rbtp_pt > 0 ? "%.1fx" % (rtp_pt / rbtp_pt) : "-")]

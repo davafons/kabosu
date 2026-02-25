@@ -24,16 +24,16 @@ namespace :release do
     puts "  jj tag set v#{version}"
     puts "  jj git push --all"
   end
+end
 
-  desc "Build the gem"
-  task :build do
-    sh "gem build kabosu.gemspec"
-  end
+desc "Build the gem"
+task :build do
+  sh "gem build kabosu.gemspec"
+end
 
-  desc "Build and push the gem to RubyGems"
-  task push: :build do
-    gemfile = Dir["kabosu-*.gem"].max_by { |f| File.mtime(f) }
-    abort "No .gem file found" unless gemfile
-    sh "gem push #{gemfile}"
-  end
+desc "Build and push the gem to RubyGems"
+task release: :build do
+  gemfile = Dir["kabosu-*.gem"].max_by { |f| File.mtime(f) }
+  abort "No .gem file found" unless gemfile
+  sh "gem push #{gemfile}"
 end

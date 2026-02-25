@@ -1,495 +1,61 @@
-use magnus::{function, method, prelude::*, Error, RArray, Ruby, Value};
-use std::cell::{Cell, OnceCell, RefCell};
-use std::sync::Arc;
-use sudachi::analysis::stateful_tokenizer::StatefulTokenizer;
-use sudachi::analysis::stateless_tokenizer::StatelessTokenizer;
-use sudachi::analysis::{Mode, Tokenize};
-use sudachi::config::Config;
-use sudachi::dic::dictionary::JapaneseDictionary;
-use sudachi::dic::word_id::WordId;
-use sudachi::prelude::MorphemeList;
-use sudachi::sentence_splitter::{SentenceSplitter, SplitSentences};
-
-fn sudachi_error(e: impl std::fmt::Display) -> Error {
-    Error::new(
-        Ruby::get().unwrap().exception_runtime_error(),
-        e.to_string(),
-    )
-}
-
-// ---------- Dictionary ----------
-
-#[magnus::wrap(class = "Kabosu::Dictionary")]
-struct RbDictionary {
-    inner: Arc<JapaneseDictionary>,
-}
-
-impl RbDictionary {
-    fn new(ruby: &Ruby, args: &[Value]) -> Result<Self, Error> {
-        let (config_path, dict_path): (Option<String>, Option<String>) = match args.len() {
-            0 => (None, None),
-            1 => (<Option<String>>::try_convert(args[0])?, None),
-            2 => (
-                <Option<String>>::try_convert(args[0])?,
-                <Option<String>>::try_convert(args[1])?,
-            ),
-            _ => {
-                return Err(Error::new(
-                    ruby.exception_arg_error(),
-                    format!(
-                        "wrong number of arguments (given {}, expected 0..2)",
-                        args.len()
-                    ),
-                ))
-            }
-        };
-
-        let cfg = match (&config_path, &dict_path) {
-            (None, None) => Config::new(None, None, None).map_err(sudachi_error)?,
-            (None, Some(dict)) => {
-                Config::new(None, None, Some(dict.into())).map_err(sudachi_error)?
-            }
-            (Some(cfg_path), None) => {
-                Config::new(Some(cfg_path.into()), None, None).map_err(sudachi_error)?
-            }
-            (Some(cfg_path), Some(dict)) => {
-                Config::new(Some(cfg_path.into()), None, Some(dict.into()))
-                    .map_err(sudachi_error)?
-            }
-        };
-
-        let dict = JapaneseDictionary::from_cfg(&cfg).map_err(sudachi_error)?;
-
-        Ok(Self {
-            inner: Arc::new(dict),
-        })
-    }
-
-    fn create(&self, mode: Option<String>) -> RbTokenizer {
-        let mode = parse_mode(mode.as_deref());
-        RbTokenizer {
-            dict: self.inner.clone(),
-            mode,
-            debug: Cell::new(false),
-            last_internal_cost: Cell::new(0),
-        }
-    }
-
-    fn create_stateful(&self, mode: Option<String>) -> RbStatefulTokenizer {
-        let mode = parse_mode(mode.as_deref());
-        let tokenizer = StatefulTokenizer::new(self.inner.clone(), mode);
-        RbStatefulTokenizer {
-            dict: self.inner.clone(),
-            inner: RefCell::new(tokenizer),
-            mode,
-            debug: Cell::new(false),
-            last_internal_cost: Cell::new(0),
-        }
-    }
-}
-
-// ---------- Tokenizer ----------
-
-#[magnus::wrap(class = "Kabosu::Tokenizer")]
-struct RbTokenizer {
-    dict: Arc<JapaneseDictionary>,
-    mode: Mode,
-    debug: Cell<bool>,
-    last_internal_cost: Cell<i32>,
-}
-
-impl RbTokenizer {
-    fn tokenize(&self, text: String) -> Result<RArray, Error> {
-        let ruby = Ruby::get().unwrap();
-        let tokenizer = StatelessTokenizer::new(&*self.dict);
-        let morphemes = tokenizer
-            .tokenize(&text, self.mode, self.debug.get())
-            .map_err(sudachi_error)?;
-
-        self.last_internal_cost.set(morphemes.get_internal_cost());
-
-        let ary = ruby.ary_new_capa(morphemes.len());
-        for i in 0..morphemes.len() {
-            let m = morphemes.get(i);
-            let wid = m.word_id();
-            let rb_m = RbMorpheme {
-                surface: m.surface().to_string(),
-                pos_id: m.part_of_speech_id(),
-                word_id_raw: wid.as_raw(),
-                is_oov: m.is_oov(),
-                dictionary_id: m.dictionary_id(),
-                is_system: wid.is_system(),
-                is_user: wid.is_user(),
-                begin: m.begin(),
-                end: m.end(),
-                begin_c: m.begin_c(),
-                end_c: m.end_c(),
-                total_cost: m.total_cost(),
-                dict: self.dict.clone(),
-                debug: self.debug.get(),
-                pos: OnceCell::new(),
-                word_fields: OnceCell::new(),
-            };
-            ary.push(rb_m)?;
-        }
-        Ok(ary)
-    }
-
-    fn mode(&self) -> String {
-        self.mode.to_string()
-    }
-
-    fn set_debug(&self, value: bool) {
-        self.debug.set(value);
-    }
-
-    fn is_debug(&self) -> bool {
-        self.debug.get()
-    }
-
-    fn internal_cost(&self) -> i32 {
-        self.last_internal_cost.get()
-    }
-
-    fn tokenize_sentences(&self, text: String) -> Result<RArray, Error> {
-        let ruby = Ruby::get().unwrap();
-        let splitter = SentenceSplitter::new();
-        let result = ruby.ary_new();
-
-        for (_range, sentence) in splitter.split(&text) {
-            let morphemes = self.tokenize(sentence.to_string())?;
-            result.push(morphemes)?;
-        }
-
-        Ok(result)
-    }
-}
-
-// ---------- StatefulTokenizer ----------
-
-#[magnus::wrap(class = "Kabosu::StatefulTokenizer")]
-struct RbStatefulTokenizer {
-    dict: Arc<JapaneseDictionary>,
-    inner: RefCell<StatefulTokenizer<Arc<JapaneseDictionary>>>,
-    mode: Mode,
-    debug: Cell<bool>,
-    last_internal_cost: Cell<i32>,
-}
-
-impl RbStatefulTokenizer {
-    fn tokenize(&self, text: String) -> Result<RArray, Error> {
-        let ruby = Ruby::get().unwrap();
-
-        let mut tokenizer = self.inner.borrow_mut();
-        tokenizer.set_debug(self.debug.get());
-
-        // Reset and write input text
-        tokenizer.reset().push_str(&text);
-
-        // Perform tokenization
-        tokenizer.do_tokenize().map_err(sudachi_error)?;
-
-        // Collect results into a MorphemeList
-        let mut mlist = MorphemeList::empty(self.dict.clone());
-        mlist.collect_results(&mut *tokenizer).map_err(sudachi_error)?;
-
-        self.last_internal_cost.set(mlist.get_internal_cost());
-
-        let ary = ruby.ary_new_capa(mlist.len());
-        for i in 0..mlist.len() {
-            let m = mlist.get(i);
-            let wid = m.word_id();
-            let rb_m = RbMorpheme {
-                surface: m.surface().to_string(),
-                pos_id: m.part_of_speech_id(),
-                word_id_raw: wid.as_raw(),
-                is_oov: m.is_oov(),
-                dictionary_id: m.dictionary_id(),
-                is_system: wid.is_system(),
-                is_user: wid.is_user(),
-                begin: m.begin(),
-                end: m.end(),
-                begin_c: m.begin_c(),
-                end_c: m.end_c(),
-                total_cost: m.total_cost(),
-                dict: self.dict.clone(),
-                debug: self.debug.get(),
-                pos: OnceCell::new(),
-                word_fields: OnceCell::new(),
-            };
-            ary.push(rb_m)?;
-        }
-        Ok(ary)
-    }
-
-    fn mode(&self) -> String {
-        self.mode.to_string()
-    }
-
-    fn set_debug(&self, value: bool) {
-        self.debug.set(value);
-    }
-
-    fn is_debug(&self) -> bool {
-        self.debug.get()
-    }
-
-    fn internal_cost(&self) -> i32 {
-        self.last_internal_cost.get()
-    }
-
-    fn tokenize_sentences(&self, text: String) -> Result<RArray, Error> {
-        let ruby = Ruby::get().unwrap();
-        let splitter = SentenceSplitter::new();
-        let result = ruby.ary_new();
-
-        for (_range, sentence) in splitter.split(&text) {
-            let morphemes = self.tokenize(sentence.to_string())?;
-            result.push(morphemes)?;
-        }
-
-        Ok(result)
-    }
-}
-
-// ---------- Morpheme ----------
-
-/// Lazily-resolved word fields from the dictionary.
-/// These are only loaded when first accessed, avoiding string allocations
-/// for morphemes whose fields are never read.
-struct LazyWordFields {
-    dictionary_form: String,
-    normalized_form: String,
-    reading_form: String,
-    synonym_group_ids: Vec<u32>,
-}
-
-#[magnus::wrap(class = "Kabosu::Morpheme")]
-struct RbMorpheme {
-    // Eagerly populated (cheap or required from input text)
-    surface: String,
-    pos_id: u16,
-    word_id_raw: u32,
-    is_oov: bool,
-    dictionary_id: i32,
-    is_system: bool,
-    is_user: bool,
-    begin: usize,
-    end: usize,
-    begin_c: usize,
-    end_c: usize,
-    total_cost: i32,
-    dict: Arc<JapaneseDictionary>,
-    debug: bool,
-
-    // Lazily resolved from grammar
-    pos: OnceCell<Vec<String>>,
-    // Lazily resolved from dictionary word info
-    word_fields: OnceCell<LazyWordFields>,
-}
-
-impl RbMorpheme {
-    fn resolve_word_fields(&self) -> &LazyWordFields {
-        self.word_fields.get_or_init(|| {
-            let wid = WordId::from_raw(self.word_id_raw);
-            match self.dict.lexicon().get_word_info(wid) {
-                Ok(info) => LazyWordFields {
-                    dictionary_form: info.dictionary_form().to_string(),
-                    normalized_form: info.normalized_form().to_string(),
-                    reading_form: info.reading_form().to_string(),
-                    synonym_group_ids: info.synonym_group_ids().to_vec(),
-                },
-                Err(_) => LazyWordFields {
-                    dictionary_form: self.surface.clone(),
-                    normalized_form: self.surface.clone(),
-                    reading_form: self.surface.clone(),
-                    synonym_group_ids: vec![],
-                },
-            }
-        })
-    }
-
-    fn surface(&self) -> &str {
-        &self.surface
-    }
-
-    fn part_of_speech(&self) -> Vec<String> {
-        self.pos
-            .get_or_init(|| {
-                self.dict
-                    .grammar()
-                    .pos_components(self.pos_id)
-                    .iter()
-                    .map(|s| s.to_string())
-                    .collect()
-            })
-            .clone()
-    }
-
-    fn part_of_speech_id(&self) -> u16 {
-        self.pos_id
-    }
-
-    fn dictionary_form(&self) -> &str {
-        &self.resolve_word_fields().dictionary_form
-    }
-
-    fn normalized_form(&self) -> &str {
-        &self.resolve_word_fields().normalized_form
-    }
-
-    fn reading_form(&self) -> &str {
-        &self.resolve_word_fields().reading_form
-    }
-
-    fn is_oov(&self) -> bool {
-        self.is_oov
-    }
-
-    fn dictionary_id(&self) -> i32 {
-        self.dictionary_id
-    }
-
-    fn word_id(&self) -> u32 {
-        self.word_id_raw
-    }
-
-    fn begin(&self) -> usize {
-        self.begin
-    }
-
-    fn end(&self) -> usize {
-        self.end
-    }
-
-    fn begin_c(&self) -> usize {
-        self.begin_c
-    }
-
-    fn end_c(&self) -> usize {
-        self.end_c
-    }
-
-    fn synonym_group_ids(&self) -> RArray {
-        let ids = &self.resolve_word_fields().synonym_group_ids;
-        let ruby = Ruby::get().unwrap();
-        let ary = ruby.ary_new_capa(ids.len());
-        for &id in ids {
-            let _ = ary.push(id);
-        }
-        ary
-    }
-
-    fn total_cost(&self) -> i32 {
-        self.total_cost
-    }
-
-    fn is_system(&self) -> bool {
-        self.is_system
-    }
-
-    fn is_user(&self) -> bool {
-        self.is_user
-    }
-
-    fn split(&self, mode_str: Option<String>) -> Result<RArray, Error> {
-        let target_mode = parse_mode(mode_str.as_deref());
-        let ruby = Ruby::get().unwrap();
-
-        // Re-tokenize the surface text with the target mode
-        let tokenizer = StatelessTokenizer::new(&*self.dict);
-        let morphemes = tokenizer
-            .tokenize(&self.surface, target_mode, self.debug)
-            .map_err(sudachi_error)?;
-
-        let ary = ruby.ary_new_capa(morphemes.len());
-        for i in 0..morphemes.len() {
-            let m = morphemes.get(i);
-            let wid = m.word_id();
-            let rb_m = RbMorpheme {
-                surface: m.surface().to_string(),
-                pos_id: m.part_of_speech_id(),
-                word_id_raw: wid.as_raw(),
-                is_oov: m.is_oov(),
-                dictionary_id: m.dictionary_id(),
-                is_system: wid.is_system(),
-                is_user: wid.is_user(),
-                begin: m.begin(),
-                end: m.end(),
-                begin_c: m.begin_c(),
-                end_c: m.end_c(),
-                total_cost: m.total_cost(),
-                dict: self.dict.clone(),
-                debug: self.debug,
-                pos: OnceCell::new(),
-                word_fields: OnceCell::new(),
-            };
-            ary.push(rb_m)?;
-        }
-        Ok(ary)
-    }
-
-    fn inspect(&self) -> String {
-        format!(
-            "#<Kabosu::Morpheme surface=\"{}\" pos_id={} reading=\"{}\" {}..{}>",
-            self.surface,
-            self.pos_id,
-            self.resolve_word_fields().reading_form,
-            self.begin_c,
-            self.end_c,
-        )
-    }
-
-    fn to_s(&self) -> &str {
-        &self.surface
-    }
-}
-
-// ---------- Helpers ----------
-
-fn parse_mode(mode: Option<&str>) -> Mode {
-    match mode {
-        Some("A") | Some("a") => Mode::A,
-        Some("B") | Some("b") => Mode::B,
-        _ => Mode::C,
-    }
-}
-
-// ---------- Init ----------
+mod dictionary;
+mod errors;
+mod morpheme;
+mod nogvl;
+mod parsing;
+mod splitter;
+mod token_batch;
+mod tokenizer;
+
+use magnus::{function, method, Error, Module, Object, Ruby};
+
+use dictionary::RbDictionary;
+use morpheme::RbMorpheme;
+use splitter::{split_sentences, split_sentences_with_ranges};
+use token_batch::RbTokenBatch;
+use tokenizer::RbTokenizer;
 
 #[magnus::init]
 fn init(ruby: &Ruby) -> Result<(), Error> {
     let module = ruby.define_module("Kabosu")?;
 
+    // Internal sentence splitter APIs. Ruby wraps these with keywords.
+    module.define_module_function("_split_sentences", function!(split_sentences, 3))?;
+    module.define_module_function(
+        "_split_sentences_with_ranges",
+        function!(split_sentences_with_ranges, 3),
+    )?;
+
     // Kabosu::Dictionary
     let dict_class = module.define_class("Dictionary", ruby.class_object())?;
-    dict_class.define_singleton_method("new", function!(RbDictionary::new, -1))?;
-    dict_class.define_method("create", method!(RbDictionary::create, 1))?;
-    dict_class.define_method("create_stateful", method!(RbDictionary::create_stateful, 1))?;
+    dict_class.define_singleton_method("new", function!(RbDictionary::new, 3))?;
+    dict_class.define_method("lookup", method!(RbDictionary::lookup, 1))?;
+    dict_class.define_method("create", method!(RbDictionary::create, 3))?;
+
+    // Kabosu::TokenBatch (internal lazy token container)
+    let batch_class = module.define_class("TokenBatch", ruby.class_object())?;
+    batch_class.define_method("size", method!(RbTokenBatch::size, 0))?;
+    batch_class.define_method("internal_cost", method!(RbTokenBatch::internal_cost, 0))?;
+    batch_class.define_method("morpheme_at", method!(RbTokenBatch::morpheme_at, 1))?;
+    batch_class.define_method("surfaces", method!(RbTokenBatch::surfaces, 0))?;
 
     // Kabosu::Tokenizer
     let tok_class = module.define_class("Tokenizer", ruby.class_object())?;
     tok_class.define_method("tokenize", method!(RbTokenizer::tokenize, 1))?;
+    tok_class.define_method("tokenize_surfaces", method!(RbTokenizer::tokenize_surfaces, 1))?;
+    tok_class.define_method("tokenize_readings", method!(RbTokenizer::tokenize_readings, 1))?;
+    tok_class.define_method(
+        "tokenize_dictionary_forms",
+        method!(RbTokenizer::tokenize_dictionary_forms, 1),
+    )?;
+    tok_class.define_method(
+        "tokenize_normalized_forms",
+        method!(RbTokenizer::tokenize_normalized_forms, 1),
+    )?;
     tok_class.define_method("mode", method!(RbTokenizer::mode, 0))?;
-    tok_class.define_method("debug=", method!(RbTokenizer::set_debug, 1))?;
+    tok_class.define_method("fields", method!(RbTokenizer::fields, 0))?;
     tok_class.define_method("debug?", method!(RbTokenizer::is_debug, 0))?;
     tok_class.define_method("internal_cost", method!(RbTokenizer::internal_cost, 0))?;
-    tok_class.define_method(
-        "tokenize_sentences",
-        method!(RbTokenizer::tokenize_sentences, 1),
-    )?;
-
-    // Kabosu::StatefulTokenizer
-    let stok_class = module.define_class("StatefulTokenizer", ruby.class_object())?;
-    stok_class.define_method("tokenize", method!(RbStatefulTokenizer::tokenize, 1))?;
-    stok_class.define_method("mode", method!(RbStatefulTokenizer::mode, 0))?;
-    stok_class.define_method("debug=", method!(RbStatefulTokenizer::set_debug, 1))?;
-    stok_class.define_method("debug?", method!(RbStatefulTokenizer::is_debug, 0))?;
-    stok_class.define_method("internal_cost", method!(RbStatefulTokenizer::internal_cost, 0))?;
-    stok_class.define_method(
-        "tokenize_sentences",
-        method!(RbStatefulTokenizer::tokenize_sentences, 1),
-    )?;
 
     // Kabosu::Morpheme
     let morph_class = module.define_class("Morpheme", ruby.class_object())?;
@@ -502,22 +68,25 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     morph_class.define_method("oov?", method!(RbMorpheme::is_oov, 0))?;
     morph_class.define_method("dictionary_id", method!(RbMorpheme::dictionary_id, 0))?;
     morph_class.define_method("word_id", method!(RbMorpheme::word_id, 0))?;
+    morph_class.define_method(
+        "dictionary_form_word_id",
+        method!(RbMorpheme::dictionary_form_word_id, 0),
+    )?;
+    morph_class.define_method("head_word_length", method!(RbMorpheme::head_word_length, 0))?;
     morph_class.define_method("begin", method!(RbMorpheme::begin, 0))?;
     morph_class.define_method("end", method!(RbMorpheme::end, 0))?;
     morph_class.define_method("begin_c", method!(RbMorpheme::begin_c, 0))?;
     morph_class.define_method("end_c", method!(RbMorpheme::end_c, 0))?;
     morph_class.define_method("synonym_group_ids", method!(RbMorpheme::synonym_group_ids, 0))?;
+    morph_class.define_method("a_unit_split", method!(RbMorpheme::a_unit_split, 0))?;
+    morph_class.define_method("b_unit_split", method!(RbMorpheme::b_unit_split, 0))?;
+    morph_class.define_method("word_structure", method!(RbMorpheme::word_structure, 0))?;
     morph_class.define_method("total_cost", method!(RbMorpheme::total_cost, 0))?;
     morph_class.define_method("system?", method!(RbMorpheme::is_system, 0))?;
     morph_class.define_method("user?", method!(RbMorpheme::is_user, 0))?;
-    morph_class.define_method("split", method!(RbMorpheme::split, 1))?;
+    morph_class.define_method("split", method!(RbMorpheme::split, 3))?;
     morph_class.define_method("inspect", method!(RbMorpheme::inspect, 0))?;
     morph_class.define_method("to_s", method!(RbMorpheme::to_s, 0))?;
-
-    // Kabosu::MODE_A, MODE_B, MODE_C constants
-    module.const_set("MODE_A", ruby.str_new("A"))?;
-    module.const_set("MODE_B", ruby.str_new("B"))?;
-    module.const_set("MODE_C", ruby.str_new("C"))?;
 
     Ok(())
 }

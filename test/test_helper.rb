@@ -7,7 +7,7 @@ module RequiresDictionary
   module SkipHook
     def setup
       require "kabosu"
-      skip "No dictionary installed. Run: rake kabosu:install" if Kabosu.dictionaries.empty?
+      skip "No dictionary installed. Run: rake kabosu:install" if Kabosu::Dictionary.list.empty?
       super
     end
   end
