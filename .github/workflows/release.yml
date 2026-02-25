@@ -33,6 +33,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION_TAG: ${{ github.ref_name }}
         run: |
-          gh release create "$VERSION_TAG" kabosu-*.gem \
-            --title "$VERSION_TAG" \
-            --generate-notes
+          if gh release view "$VERSION_TAG" &>/dev/null; then
+            echo "Release $VERSION_TAG already exists, uploading assets to it"
+            gh release upload "$VERSION_TAG" kabosu-*.gem --clobber
+          else
+            gh release create "$VERSION_TAG" kabosu-*.gem \
+              --title "$VERSION_TAG" \
+              --generate-notes
+          fi
