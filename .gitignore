@@ -1,0 +1,10 @@
+/.bundle/
+/pkg/
+/tmp/
+/target/
+/lib/kabosu/kabosu.so
+/lib/kabosu/kabosu.bundle
+Gemfile.lock
+*.o
+*.so
+*.bundle

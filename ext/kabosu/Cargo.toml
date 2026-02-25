@@ -1,0 +1,12 @@
+[package]
+name = "kabosu"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+magnus = { version = "0.8", features = ["rb-sys"] }
+sudachi = { git = "https://github.com/WorksApplications/sudachi.rs", branch = "develop" }
