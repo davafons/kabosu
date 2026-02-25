@@ -27,12 +27,12 @@ morphemes.dictionary_forms  # => ["東京都", "に", "住む", "で", "居る"]
 
 # Each morpheme exposes rich linguistic detail
 morpheme = morphemes.first
-morpheme.surface             # => "東京都"         - surface form (as it appears in text)
+morpheme.surface             # => "東京都"          - surface form (as it appears in text)
 morpheme.part_of_speech      # => ["名詞", "固有名詞", "地名", "一般"] — part-of-speech tags
 morpheme.part_of_speech_id   # => 5                - numeric POS id
-morpheme.dictionary_form     # => "東京都"         - base/dictionary form
-morpheme.normalized_form     # => "東京都"         - normalized form
-morpheme.reading_form        # => "トウキョウト"   - phonetic reading
+morpheme.dictionary_form     # => "東京都"          - base/dictionary form
+morpheme.normalized_form     # => "東京都"          - normalized form
+morpheme.reading_form        # => "トウキョウト"     - phonetic reading
 morpheme.oov?                # => false            - out-of-vocabulary?
 morpheme.dictionary_id       # => 0                - source dictionary id
 morpheme.word_id             # => 544373           - internal word id
