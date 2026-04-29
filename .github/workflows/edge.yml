@@ -37,7 +37,7 @@ jobs:
           mkdir -p pkg
           gem build kabosu.gemspec --output "pkg/kabosu-${DEV_VERSION}.gem"
 
-      - uses: rubygems/configure-rubygems-credentials@v1
+      - uses: rubygems/configure-rubygems-credentials@v1.0.0
 
       - name: Push dev gem to RubyGems
         run: gem push "pkg/kabosu-${DEV_VERSION}.gem"

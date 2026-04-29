@@ -62,7 +62,7 @@ jobs:
       - name: List artifacts to publish
         run: ls -lh pkg/
 
-      - uses: rubygems/configure-rubygems-credentials@v1
+      - uses: rubygems/configure-rubygems-credentials@v1.0.0
 
       - name: Push gems to RubyGems
         run: |
