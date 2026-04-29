@@ -21,7 +21,7 @@ jobs:
 
       - name: Set dev version
         run: |
-          # Generate version like 0.1.0.dev.20260225.abcdef1
+          # Generate version like 0.6.10.dev.20260429.abcdef1
           base_version=$(ruby -r ./lib/kabosu/version -e "puts Kabosu::VERSION")
           date=$(date -u +%Y%m%d)
           sha=$(git rev-parse --short HEAD)
@@ -32,8 +32,12 @@ jobs:
           echo "DEV_VERSION=${dev_version}" >> "$GITHUB_ENV"
           echo "Publishing edge version: ${dev_version}"
 
-      - name: Build gem
-        run: gem build kabosu.gemspec
+      - name: Build gem into pkg/
+        run: |
+          mkdir -p pkg
+          gem build kabosu.gemspec --output "pkg/kabosu-${DEV_VERSION}.gem"
 
-      - name: Push to RubyGems
-        uses: rubygems/release-gem@v1
+      - uses: rubygems/configure-rubygems-credentials@v1
+
+      - name: Push dev gem to RubyGems
+        run: gem push "pkg/kabosu-${DEV_VERSION}.gem"
