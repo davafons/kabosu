@@ -8,7 +8,6 @@
 /lib/kabosu/kabosu.bundle
 /lib/kabosu/kabosu.dll
 Gemfile.lock
-Cargo.lock
 *.o
 *.so
 *.bundle

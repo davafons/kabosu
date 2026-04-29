@@ -95,7 +95,9 @@ fn analyze_text(
         tokenizer.do_tokenize().map_err(|e| e.to_string())?;
 
         let mut mlist = MorphemeList::empty(pool.dict.clone());
-        mlist.collect_results(tokenizer).map_err(|e| e.to_string())?;
+        mlist
+            .collect_results(tokenizer)
+            .map_err(|e| e.to_string())?;
 
         let mut morphemes = Vec::with_capacity(mlist.len());
         for i in 0..mlist.len() {

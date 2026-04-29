@@ -51,7 +51,10 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     let morph_class = module.define_class("Morpheme", ruby.class_object())?;
     morph_class.define_method("surface", method!(RbMorpheme::surface, 0))?;
     morph_class.define_method("part_of_speech", method!(RbMorpheme::part_of_speech, 0))?;
-    morph_class.define_method("part_of_speech_id", method!(RbMorpheme::part_of_speech_id, 0))?;
+    morph_class.define_method(
+        "part_of_speech_id",
+        method!(RbMorpheme::part_of_speech_id, 0),
+    )?;
     morph_class.define_method("dictionary_form", method!(RbMorpheme::dictionary_form, 0))?;
     morph_class.define_method("normalized_form", method!(RbMorpheme::normalized_form, 0))?;
     morph_class.define_method("reading_form", method!(RbMorpheme::reading_form, 0))?;
@@ -67,7 +70,10 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     morph_class.define_method("end", method!(RbMorpheme::end, 0))?;
     morph_class.define_method("begin_c", method!(RbMorpheme::begin_c, 0))?;
     morph_class.define_method("end_c", method!(RbMorpheme::end_c, 0))?;
-    morph_class.define_method("synonym_group_ids", method!(RbMorpheme::synonym_group_ids, 0))?;
+    morph_class.define_method(
+        "synonym_group_ids",
+        method!(RbMorpheme::synonym_group_ids, 0),
+    )?;
     morph_class.define_method("a_unit_split", method!(RbMorpheme::a_unit_split, 0))?;
     morph_class.define_method("b_unit_split", method!(RbMorpheme::b_unit_split, 0))?;
     morph_class.define_method("word_structure", method!(RbMorpheme::word_structure, 0))?;

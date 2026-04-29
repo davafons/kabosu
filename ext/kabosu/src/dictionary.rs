@@ -54,7 +54,9 @@ impl RbDictionary {
         let lexicon = self.inner.lexicon();
 
         for entry in lexicon.lookup(text.as_bytes(), 0) {
-            let info = lexicon.get_word_info(entry.word_id).map_err(sudachi_error)?;
+            let info = lexicon
+                .get_word_info(entry.word_id)
+                .map_err(sudachi_error)?;
             let surface_slice = text.get(..entry.end).ok_or_else(|| {
                 sudachi_error(format!(
                     "lookup returned invalid UTF-8 boundary: end={}",

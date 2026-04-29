@@ -34,7 +34,8 @@ impl SplitSentencesJob {
 
         match &self.dict_path {
             Some(path) => {
-                let cfg = Config::new(None, None, Some(path.clone().into())).map_err(|e| e.to_string())?;
+                let cfg = Config::new(None, None, Some(path.clone().into()))
+                    .map_err(|e| e.to_string())?;
                 let dict = JapaneseDictionary::from_cfg(&cfg).map_err(|e| e.to_string())?;
                 let base = match self.limit {
                     Some(lim) => SentenceSplitter::with_limit(lim),

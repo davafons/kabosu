@@ -1,0 +1,6 @@
+# Workspace manifest. The actual Rust crate lives in `ext/kabosu/`; this
+# top-level file lets `cargo metadata` and rb_sys's extension task locate
+# the crate from the gem root.
+[workspace]
+members = ["ext/kabosu"]
+resolver = "2"

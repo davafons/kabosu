@@ -35,7 +35,9 @@ pub(crate) fn parse_subset(value: Option<Value>) -> Result<InfoSubset, Error> {
         } else if let Ok(s) = String::try_convert(raw) {
             s
         } else {
-            return Err(arg_error("fields must contain only String or Symbol values"));
+            return Err(arg_error(
+                "fields must contain only String or Symbol values",
+            ));
         };
 
         let normalized = name.to_ascii_lowercase();

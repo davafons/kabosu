@@ -197,7 +197,11 @@ impl RbMorpheme {
             let info = match info_result {
                 Ok(Ok(info)) => info,
                 Ok(Err(e)) => return Err(sudachi_error(e)),
-                Err(_) => return Err(sudachi_error("panic while reading child word info for split")),
+                Err(_) => {
+                    return Err(sudachi_error(
+                        "panic while reading child word info for split",
+                    ))
+                }
             };
 
             // head_word_length is in codepoints; clamp to remaining characters.
@@ -354,7 +358,11 @@ impl RbMorpheme {
                 ary.clear()?;
                 ary
             }
-            None => ruby.ary_new_capa(if children.is_empty() { 1 } else { children.len() }),
+            None => ruby.ary_new_capa(if children.is_empty() {
+                1
+            } else {
+                children.len()
+            }),
         };
 
         if children.is_empty() {
