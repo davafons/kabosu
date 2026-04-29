@@ -35,16 +35,17 @@ class DictionaryWrapperTest < Minitest::Test
     end
   end
 
-  def test_dictionary_new_passes_system_dict
+  def test_dictionary_new_passes_system_dict_with_default_config
     with_stubbed_dictionary_singleton do
-      assert_equal [nil, "/tmp/system.dic", nil], Kabosu::Dictionary.new(system_dict: "/tmp/system.dic")
+      assert_equal [Kabosu::Dictionary::DEFAULT_CONFIG_PATH, "/tmp/system.dic", nil],
+        Kabosu::Dictionary.new(system_dict: "/tmp/system.dic")
     end
   end
 
   def test_dictionary_new_forwards_user_dicts
     with_stubbed_dictionary_singleton do
       user_dicts = ["/tmp/domain.dic", "/tmp/names.dic"]
-      assert_equal [nil, "/tmp/system.dic", user_dicts],
+      assert_equal [Kabosu::Dictionary::DEFAULT_CONFIG_PATH, "/tmp/system.dic", user_dicts],
         Kabosu::Dictionary.new(system_dict: "/tmp/system.dic", user_dicts: user_dicts)
     end
   end

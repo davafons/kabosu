@@ -62,6 +62,8 @@ module Kabosu
   # ── Dictionary: keyword API and management ──
 
   class Dictionary
+    DEFAULT_CONFIG_PATH = File.expand_path("kabosu/resources/sudachi.json", __dir__).freeze
+
     class << self
       alias_method :_new, :new
 
@@ -82,6 +84,13 @@ module Kabosu
         if config.nil? && system_dict.nil?
           raise ArgumentError, "either config or system_dict is required"
         end
+
+        # Default to the sudachi.json bundled with this gem when only
+        # system_dict is given. sudachi.rs's own default config path is
+        # captured via env!("CARGO_MANIFEST_DIR") and doesn't exist on
+        # consumers' machines once the gem is precompiled and shipped.
+        config ||= DEFAULT_CONFIG_PATH
+
         _new(config, system_dict, user_dicts)
       rescue RuntimeError => e
         raise map_dictionary_init_error(e, config: config, system_dict: system_dict)
