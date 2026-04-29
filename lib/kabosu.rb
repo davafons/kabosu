@@ -1,5 +1,16 @@
 require_relative "kabosu/version"
-require_relative "kabosu/kabosu"
+
+# Load the native extension. Precompiled gems place it under a per-Ruby-version
+# subdirectory (lib/kabosu/3.3/kabosu.bundle, etc.); a source build leaves it
+# at lib/kabosu/kabosu.{bundle,so}. Try the version-suffixed path first, fall
+# back to the flat path so dev/source builds keep working.
+begin
+  major_minor = RUBY_VERSION.split(".").take(2).join(".")
+  require_relative "kabosu/#{major_minor}/kabosu"
+rescue LoadError
+  require_relative "kabosu/kabosu"
+end
+
 require_relative "kabosu/dict_manager"
 require_relative "kabosu/pos_matcher"
 require_relative "kabosu/morpheme_list"
