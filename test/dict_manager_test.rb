@@ -173,4 +173,56 @@ class DictManagerTest < Minitest::Test
     error = assert_raises { @manager.install("SMALL", version: "00000000") }
     refute_instance_of ArgumentError, error
   end
+
+  # ── default_dir ──
+
+  def test_default_dir_falls_back_to_home
+    ENV.delete("KABOSU_DICT_DIR")
+    assert_equal File.join(Dir.home, ".kabosu", "dict"), Kabosu::DictManager.default_dir
+  end
+
+  def test_default_dir_honors_env_var
+    original = ENV["KABOSU_DICT_DIR"]
+    ENV["KABOSU_DICT_DIR"] = "/tmp/custom-kabosu-dict"
+    assert_equal "/tmp/custom-kabosu-dict", Kabosu::DictManager.default_dir
+  ensure
+    if original.nil?
+      ENV.delete("KABOSU_DICT_DIR")
+    else
+      ENV["KABOSU_DICT_DIR"] = original
+    end
+  end
+
+  # ── install_if_missing ──
+
+  def test_install_if_missing_returns_existing_path_without_network
+    path = stub_dic("20260116", "core")
+    # Sentinel: if it tried to hit the network, latest_version would raise here
+    @manager.define_singleton_method(:latest_version) { raise "should not be called" }
+    assert_equal path, @manager.install_if_missing("core")
+  end
+
+  def test_install_if_missing_returns_existing_when_version_matches
+    path = stub_dic("20260116", "small")
+    @manager.define_singleton_method(:latest_version) { raise "should not be called" }
+    assert_equal path, @manager.install_if_missing("small", version: "20260116")
+  end
+
+  def test_install_if_missing_falls_through_when_version_mismatches
+    stub_dic("20260116", "small")
+    # Asking for a different version should attempt install (which we'll let
+    # bubble out as a non-ArgumentError network/HTTP failure).
+    error = assert_raises { @manager.install_if_missing("small", version: "00000000") }
+    refute_instance_of ArgumentError, error
+  end
+
+  def test_install_if_missing_falls_through_when_edition_missing
+    stub_dic("20260116", "small")
+    error = assert_raises { @manager.install_if_missing("full", version: "00000000") }
+    refute_instance_of ArgumentError, error
+  end
+
+  def test_install_if_missing_rejects_invalid_edition
+    assert_raises(ArgumentError) { @manager.install_if_missing("xl") }
+  end
 end

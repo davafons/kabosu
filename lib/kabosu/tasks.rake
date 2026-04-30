@@ -25,6 +25,12 @@ namespace :kabosu do
     end
   end
 
+  desc "Install a dictionary only if a matching one isn't already on disk. EDITION=core|small|full (default core), VERSION=YYYYMMDD optional."
+  task :install_if_missing do
+    edition = ENV["EDITION"] || "core"
+    Kabosu::DictManager.new.install_if_missing(edition, version: ENV["VERSION"])
+  end
+
   # ── Remove ──
 
   desc "Remove all installed dictionaries, or a specific one with EDITION=small|core|full and/or VERSION=YYYYMMDD"

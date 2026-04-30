@@ -14,6 +14,7 @@ end
 require_relative "kabosu/dict_manager"
 require_relative "kabosu/pos_matcher"
 require_relative "kabosu/morpheme_list"
+require_relative "kabosu/railtie" if defined?(Rails::Railtie)
 
 module Kabosu
   class Error < StandardError; end

@@ -2,7 +2,7 @@ require "net/http"
 require "uri"
 require "fileutils"
 require "json"
-require "open3"
+require "zip"
 
 module Kabosu
   class DictManager
@@ -14,9 +14,11 @@ module Kabosu
     class DictNotFound < StandardError; end
     class DownloadError < StandardError; end
 
-    # Default storage directory: ~/.kabosu/dict/
+    # Default storage directory. Honors KABOSU_DICT_DIR so consumers can point
+    # the gem at a Docker volume / shared mount without subclassing or threading
+    # `dir:` through every call site. Falls back to ~/.kabosu/dict/.
     def self.default_dir
-      File.join(Dir.home, ".kabosu", "dict")
+      ENV["KABOSU_DICT_DIR"] || File.join(Dir.home, ".kabosu", "dict")
     end
 
     def initialize(dir: self.class.default_dir)
@@ -58,6 +60,24 @@ module Kabosu
 
       $stderr.puts "Installed: #{dic_path}"
       dic_path
+    end
+
+    # Idempotent install. Returns the existing dictionary path if a matching
+    # one is already on disk; otherwise downloads and extracts. Useful for
+    # entrypoint scripts and CI hooks that should converge on the desired
+    # state without paying the network cost on every run.
+    #
+    #   manager.install_if_missing("core")
+    #   manager.install_if_missing("core", version: "20260116")
+    #
+    def install_if_missing(edition = "core", version: nil)
+      edition = validate_edition(edition)
+      matching = installed.find do |d|
+        d[:edition] == edition && (version.nil? || d[:version] == version)
+      end
+      return matching[:path] if matching
+
+      install(edition, version: version)
     end
 
     # ── Discovery ──
@@ -229,11 +249,19 @@ module Kabosu
 
     def extract(zip_path, dest_dir)
       $stderr.puts "Extracting..."
-      # Use system unzip — available everywhere, handles large files well
-      _stdout, stderr, status = Open3.capture3("unzip", "-o", zip_path, "-d", dest_dir)
-      unless status.success?
-        raise DownloadError, "Failed to extract #{zip_path}: #{stderr}"
+      Zip::File.open(zip_path) do |archive|
+        archive.each do |entry|
+          target = File.join(dest_dir, entry.name)
+          # Guard against zip-slip — refuse entries that escape dest_dir.
+          unless File.expand_path(target).start_with?(File.expand_path(dest_dir) + File::SEPARATOR)
+            raise DownloadError, "Refusing to extract entry outside dest_dir: #{entry.name}"
+          end
+          FileUtils.mkdir_p(File.dirname(target))
+          entry.extract(target) { true } # overwrite existing
+        end
       end
+    rescue Zip::Error => e
+      raise DownloadError, "Failed to extract #{zip_path}: #{e.message}"
     end
   end
 end

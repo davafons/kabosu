@@ -85,14 +85,17 @@ Dictionary editions (from smallest to largest): `small`, `core`, `full`. See the
 Rake tasks for managing Sudachi dictionaries:
 
 ```sh
-rake kabosu:install[small]     # Install a dictionary (VERSION=YYYYMMDD for a specific version)
-rake kabosu:list               # List installed dictionaries
-rake kabosu:versions           # Show available versions from GitHub
-rake kabosu:path               # Show path to best available dictionary
-rake kabosu:remove[small]      # Remove a dictionary (VERSION=YYYYMMDD for a specific version)
+rake kabosu:install[small]      # Install a dictionary (VERSION=YYYYMMDD for a specific version)
+rake kabosu:install_if_missing  # Same, but a no-op when a dictionary is already installed
+rake kabosu:list                # List installed dictionaries
+rake kabosu:versions            # Show available versions from GitHub
+rake kabosu:path                # Show path to best available dictionary
+rake kabosu:remove[small]       # Remove a dictionary (VERSION=YYYYMMDD for a specific version)
 ```
 
-Dictionaries are stored in `~/.kabosu/dict/` by default. Set `KABOSU_DICT_DIR` to customize.
+Dictionaries are stored in `~/.kabosu/dict/` by default. Set `KABOSU_DICT_DIR` to customize — useful for pointing at a Docker volume so the dictionary persists across deployments.
+
+In a Rails app, the rake tasks are auto-loaded via railtie — no manual `load` needed. For container entrypoints, `rake kabosu:install_if_missing` converges on the desired state without hitting the network on subsequent runs.
 
 ## Tokenization modes
 
