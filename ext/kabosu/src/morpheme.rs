@@ -1,6 +1,8 @@
-use magnus::{Error, RArray, Ruby};
+use magnus::value::ReprValue;
+use magnus::{gc, Error, RArray, RString, Ruby};
 use std::cell::OnceCell;
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
 use sudachi::analysis::morpheme::Morpheme as SudachiMorpheme;
 use sudachi::analysis::stateless_tokenizer::DictionaryAccess;
 use sudachi::analysis::Mode;
@@ -57,6 +59,12 @@ where
     }
 }
 
+#[derive(Clone, Copy)]
+struct CachedRArray(RArray);
+unsafe impl Send for CachedRArray {}
+
+static POS_CACHE: OnceLock<Mutex<HashMap<(usize, u16), CachedRArray>>> = OnceLock::new();
+
 pub(crate) fn rb_morpheme_from_data(
     data: MorphemeData,
     dict: Arc<JapaneseDictionary>,
@@ -66,7 +74,6 @@ pub(crate) fn rb_morpheme_from_data(
         data,
         dict,
         debug,
-        pos: OnceCell::new(),
         word_fields: OnceCell::new(),
     }
 }
@@ -85,7 +92,6 @@ pub(crate) struct RbMorpheme {
     data: MorphemeData,
     dict: Arc<JapaneseDictionary>,
     debug: bool,
-    pos: OnceCell<Vec<String>>,
     word_fields: OnceCell<LazyWordFields>,
 }
 
@@ -243,17 +249,32 @@ impl RbMorpheme {
         &self.data.surface
     }
 
-    pub(crate) fn part_of_speech(&self) -> Vec<String> {
-        self.pos
-            .get_or_init(|| {
-                self.dict
-                    .grammar()
-                    .pos_components(self.data.pos_id)
-                    .iter()
-                    .map(|s| s.to_string())
-                    .collect()
-            })
-            .clone()
+    pub(crate) fn part_of_speech(&self) -> Result<RArray, Error> {
+        let dict_ptr = Arc::as_ptr(&self.dict) as usize;
+        let pos_id = self.data.pos_id;
+
+        {
+            let cache = POS_CACHE.get_or_init(|| Mutex::new(HashMap::new())).lock().unwrap();
+            if let Some(&cached) = cache.get(&(dict_ptr, pos_id)) {
+                return Ok(cached.0);
+            }
+        }
+
+        let ruby = Ruby::get().unwrap();
+        let ary = ruby.ary_new();
+        for s in self.dict.grammar().pos_components(pos_id) {
+            let rstr: RString = ruby.str_new(s);
+            rstr.as_value().freeze();
+            ary.push(rstr)?;
+        }
+        ary.as_value().freeze();
+        // Pin permanently: POS combinations are bounded (~hundreds) and frozen
+        // arrays are tiny. The cache lives for the process lifetime.
+        gc::register_mark_object(ary);
+
+        POS_CACHE.get_or_init(|| Mutex::new(HashMap::new())).lock().unwrap().insert((dict_ptr, pos_id), CachedRArray(ary));
+
+        Ok(ary)
     }
 
     pub(crate) fn part_of_speech_id(&self) -> u16 {
