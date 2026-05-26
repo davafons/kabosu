@@ -90,4 +90,58 @@ class MorphemeListTest < Minitest::Test
   def test_inspect_includes_surfaces
     assert_match(/東京/, @list.inspect)
   end
+
+  # ── group_morphemes delegation + fallback ──
+
+  def test_group_morphemes_delegates_to_source_when_available
+    source = Struct.new(:morpheme_at, :size, :surfaces, :group_morphemes, :internal_cost)
+                .new(nil, 0, [], [["from_source"]], nil)
+
+    list = Kabosu::MorphemeList.new(source)
+    result = list.group_morphemes
+    assert_equal [["from_source"]], result
+  end
+
+  def test_group_morphemes_fallback_te_form_absorbed
+    # When no lazy source is present the Ruby fallback must produce the
+    # same jpdb-style grouping as the Rust path for the canonical te-form
+    # case: て/で + いる/ある/くる/etc. collapses into one group.
+    morphemes = [
+      MockMorpheme.new(surface: "住ん", reading_form: "スン",
+                       dictionary_form: "住む", normalized_form: "住ん",
+                       part_of_speech: %w[動詞 一般 * * * 連用形], oov?: false),
+      MockMorpheme.new(surface: "で", reading_form: "デ",
+                       dictionary_form: "で", normalized_form: "で",
+                       part_of_speech: %w[助詞 接続助詞 * * * *], oov?: false),
+      MockMorpheme.new(surface: "いる", reading_form: "イル",
+                       dictionary_form: "いる", normalized_form: "いる",
+                       part_of_speech: %w[動詞 非自立可能 * * * 連用形], oov?: false),
+    ]
+    list = Kabosu::MorphemeList.new(morphemes)
+    grouped = list.group_morphemes
+    surfaces = grouped.map { |g| g.map(&:surface).join }
+    assert_equal ["住んでいる"], surfaces
+  end
+
+  def test_group_morphemes_fallback_clause_boundary_not_absorbed
+    # The Ruby fallback must NOT merge clause-boundary particles into the
+    # preceding group, otherwise two clauses would be presented as one chip.
+    morphemes = [
+      MockMorpheme.new(surface: "食べ", reading_form: "タベ",
+                       dictionary_form: "食べる", normalized_form: "食べ",
+                       part_of_speech: %w[動詞 一般 * * * 連用形], oov?: false),
+      MockMorpheme.new(surface: "ながら", reading_form: "ナガラ",
+                       dictionary_form: "ながら", normalized_form: "ながら",
+                       part_of_speech: %w[助詞 接続助詞 * * * *], oov?: false),
+      MockMorpheme.new(surface: "働く", reading_form: "ハタラク",
+                       dictionary_form: "働く", normalized_form: "働く",
+                       part_of_speech: %w[動詞 一般 * * * 終止形], oov?: false),
+    ]
+    list = Kabosu::MorphemeList.new(morphemes)
+    grouped = list.group_morphemes
+    surfaces = grouped.map { |g| g.map(&:surface).join }
+    assert_equal 3, surfaces.size
+    assert_includes surfaces, "ながら"
+    assert_includes surfaces, "働く"
+  end
 end

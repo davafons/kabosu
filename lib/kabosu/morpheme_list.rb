@@ -92,6 +92,54 @@ module Kabosu
       surfaces.join
     end
 
+    # jpdb-style grouping performed natively in Rust when backed by a lazy
+    # source. Falls back to a Ruby implementation for already-materialized
+    # lists so the method is always safe to call.
+    def group_morphemes
+      if @source&.respond_to?(:group_morphemes)
+        return @source.group_morphemes
+      end
+
+      groups = []
+      each do |m|
+        last = groups.last
+        if last && content_word?(last.first) && extends_group?(m, last.last)
+          last << m
+        else
+          groups << [m]
+        end
+      end
+      groups
+    end
+
+    private
+
+    def content_word?(morpheme)
+      !%w[助詞 助動詞 補助記号 記号 空白].include?(morpheme.part_of_speech.first)
+    end
+
+    def extends_group?(morpheme, prev = nil)
+      pos = morpheme.part_of_speech
+      pos1 = pos[0]
+      pos1 == "助動詞" ||
+        (pos1 == "助詞" && !clause_boundary?(morpheme) &&
+         (pos[1] == "接続助詞" ||
+          (pos[1] == "副助詞" && prev && %w[動詞 形容詞 形状詞].include?(prev.part_of_speech[0])))) ||
+        (pos1 == "動詞" && pos[1] == "非自立可能" &&
+         prev && prev.part_of_speech[0] == "助詞" && %w[て で].include?(prev.surface))
+    end
+
+    def clause_boundary?(morpheme)
+      return false unless morpheme
+      pos = morpheme.part_of_speech
+      return true if pos[0] == "助詞" &&
+                     %w[ながら たら ば と のに から ので けれど けど つつ なり や か かどうか とも].include?(morpheme.surface)
+      return true if pos[0] == "助詞" && pos[1] == "接続助詞" && morpheme.surface == "が"
+      false
+    end
+
+    public
+
     # Filter morphemes by POS. Accepts a PosMatcher or an array pattern.
     # Returns a new MorphemeList with only matching morphemes.
     #

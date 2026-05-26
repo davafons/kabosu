@@ -2,6 +2,7 @@ use magnus::{Error, RArray, Ruby};
 use std::sync::Arc;
 use sudachi::dic::dictionary::JapaneseDictionary;
 
+use crate::grouping::group_morphemes_rust;
 use crate::morpheme::{rb_morpheme_from_data, MorphemeData, RbMorpheme};
 
 #[magnus::wrap(class = "Kabosu::TokenBatch")]
@@ -49,5 +50,11 @@ impl RbTokenBatch {
             ary.push(ruby.str_new(&m.surface))?;
         }
         Ok(ary)
+    }
+
+    /// jpdb-style grouping performed natively in Rust.
+    /// Returns an Array-of-Array of Kabosu::Morpheme.
+    pub(crate) fn group_morphemes(&self) -> Result<RArray, Error> {
+        group_morphemes_rust(&self.morphemes, &self.dict, self.debug)
     }
 }
