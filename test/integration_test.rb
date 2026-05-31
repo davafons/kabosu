@@ -262,4 +262,53 @@ class IntegrationTest < Minitest::Test
       assert_equal m.surface.bytesize, m.end
     end
   end
+
+  # ── group_morphemes (native Rust path) ──
+
+  def test_group_morphemes_produces_fewer_groups_than_raw_morphemes
+    tokens = @tok_c.tokenize("食べてみた")
+    grouped = tokens.group_morphemes
+    assert_operator grouped.size, :<, tokens.size,
+      "group_morphemes must merge inflectional suffixes into fewer groups"
+  end
+
+  def test_group_morphemes_te_form_chain_absorbed
+    # て + いる/ある/くる/etc. is the canonical jpdb feature — everything
+    # should collapse into one group so the surface is "住んでいる", not
+    # three separate morphemes.
+    tokens = @tok_c.tokenize("住んでいる")
+    grouped = tokens.group_morphemes
+    surfaces = grouped.map { |g| g.map(&:surface).join }
+    assert_includes surfaces, "住んでいる"
+    refute_includes surfaces, "いる"
+  end
+
+  def test_group_morphemes_clause_boundary_not_absorbed
+    # ながら is a clause boundary particle; the Rust code must NOT absorb it
+    # into the preceding verb. Otherwise two independent clauses would be
+    # presented as one clickable chip.
+    tokens = @tok_c.tokenize("食べながら働く")
+    grouped = tokens.group_morphemes
+    surfaces = grouped.map { |g| g.map(&:surface).join }
+    assert_includes surfaces, "ながら"
+    assert_includes surfaces, "働く"
+  end
+
+  def test_group_morphemes_native_and_fallback_parity
+    # The Rust path and Ruby fallback must produce identical grouping for any
+    # input, otherwise consumers that materialize the list first will see
+    # different behavior.
+    inputs = ["食べた", "食べない", "食べます", "住んでいる", "食べながら働く", "食べてみた"]
+
+    inputs.each do |text|
+      native = @tok_c.tokenize(text).group_morphemes
+      fallback = Kabosu::MorphemeList.new(@tok_c.tokenize(text).to_a).group_morphemes
+
+      native_surfaces = native.map { |g| g.map(&:surface).join }
+      fallback_surfaces = fallback.map { |g| g.map(&:surface).join }
+
+      assert_equal native_surfaces, fallback_surfaces,
+        "Native and fallback diverged for #{text.inspect}: native=#{native_surfaces.inspect} fallback=#{fallback_surfaces.inspect}"
+    end
+  end
 end

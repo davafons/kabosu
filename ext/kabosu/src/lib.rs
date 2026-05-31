@@ -1,5 +1,6 @@
 mod dictionary;
 mod errors;
+mod grouping;
 mod morpheme;
 mod nogvl;
 mod parsing;
@@ -38,6 +39,7 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     batch_class.define_method("internal_cost", method!(RbTokenBatch::internal_cost, 0))?;
     batch_class.define_method("morpheme_at", method!(RbTokenBatch::morpheme_at, 1))?;
     batch_class.define_method("surfaces", method!(RbTokenBatch::surfaces, 0))?;
+    batch_class.define_method("group_morphemes", method!(RbTokenBatch::group_morphemes, 0))?;
 
     // Kabosu::Tokenizer
     let tok_class = module.define_class("Tokenizer", ruby.class_object())?;
