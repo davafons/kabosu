@@ -8,8 +8,8 @@ module Kabosu
   class DictManager
     EDITIONS = %w[small core full].freeze
     EDITION_PRIORITY = %w[full core small].freeze
-    GITHUB_REPO = "WorksApplications/SudachiDict"
-    GITHUB_API = "https://api.github.com"
+    GITHUB_REPO = "WorksApplications/SudachiDict".freeze
+    GITHUB_API = "https://api.github.com".freeze
 
     class DictNotFound < StandardError; end
     class DownloadError < StandardError; end
@@ -42,7 +42,7 @@ module Kabosu
       dic_path = File.join(dest_dir, "system_#{edition}.dic")
 
       if File.exist?(dic_path)
-        $stderr.puts "Already installed: #{dic_path}"
+        warn "Already installed: #{dic_path}"
         return dic_path
       end
 
@@ -54,11 +54,9 @@ module Kabosu
       extract(zip_path, @dir)
       FileUtils.rm_f(zip_path)
 
-      unless File.exist?(dic_path)
-        raise DownloadError, "Expected #{dic_path} after extraction, but file not found"
-      end
+      raise DownloadError, "Expected #{dic_path} after extraction, but file not found" unless File.exist?(dic_path)
 
-      $stderr.puts "Installed: #{dic_path}"
+      warn "Installed: #{dic_path}"
       dic_path
     end
 
@@ -88,7 +86,7 @@ module Kabosu
       results = []
       return results unless Dir.exist?(@dir)
 
-      Dir.glob(File.join(@dir, "sudachi-dictionary-*")).sort.reverse.each do |version_dir|
+      Dir.glob(File.join(@dir, "sudachi-dictionary-*")).reverse.each do |version_dir|
         next unless File.directory?(version_dir)
 
         version = File.basename(version_dir).sub("sudachi-dictionary-", "")
@@ -113,6 +111,7 @@ module Kabosu
         edition = validate_edition(edition)
         match = candidates.find { |d| d[:edition] == edition }
         raise DictNotFound, "No #{edition} dictionary installed" unless match
+
         return match[:path]
       end
 
@@ -140,14 +139,14 @@ module Kabosu
 
       targets.each do |d|
         FileUtils.rm_f(d[:path])
-        $stderr.puts "Removed: #{d[:path]}"
+        warn "Removed: #{d[:path]}"
 
         # Clean up empty version directories
         version_dir = File.dirname(d[:path])
         dics_remaining = Dir.glob(File.join(version_dir, "system_*.dic"))
         if dics_remaining.empty?
           FileUtils.rm_rf(version_dir)
-          $stderr.puts "Removed empty directory: #{version_dir}"
+          warn "Removed empty directory: #{version_dir}"
         end
       end
     end
@@ -178,6 +177,7 @@ module Kabosu
       unless EDITIONS.include?(edition)
         raise ArgumentError, "Unknown edition '#{edition}'. Must be one of: #{EDITIONS.join(", ")}"
       end
+
       edition
     end
 
@@ -186,7 +186,7 @@ module Kabosu
     end
 
     def download(url, dest)
-      $stderr.puts "Downloading #{url}..."
+      warn "Downloading #{url}..."
       uri = resolve_redirects(URI(url))
 
       Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == "https") do |http|
@@ -202,20 +202,22 @@ module Kabosu
             response.read_body do |chunk|
               f.write(chunk)
               written += chunk.bytesize
-              if total && total > 0
+              if total&.positive?
                 pct = (written * 100 / total).clamp(0, 100)
-                $stderr.print "\r  #{(written.to_f / 1024 / 1024).round(1)} / #{(total.to_f / 1024 / 1024).round(1)} MB (#{pct}%)"
+                done_mb = (written.to_f / 1024 / 1024).round(1)
+                total_mb = (total.to_f / 1024 / 1024).round(1)
+                $stderr.print "\r  #{done_mb} / #{total_mb} MB (#{pct}%)"
               end
             end
           end
 
-          $stderr.puts "\r  #{(written.to_f / 1024 / 1024).round(1)} MB downloaded"
+          warn "\r  #{(written.to_f / 1024 / 1024).round(1)} MB downloaded"
         end
       end
     end
 
     def resolve_redirects(uri, limit: 5)
-      raise DownloadError, "Too many redirects" if limit == 0
+      raise DownloadError, "Too many redirects" if limit.zero?
 
       Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == "https") do |http|
         response = http.request(Net::HTTP::Head.new(uri))
@@ -229,7 +231,7 @@ module Kabosu
     end
 
     def http_get(uri, headers: {}, redirect_limit: 5)
-      raise DownloadError, "Too many redirects" if redirect_limit == 0
+      raise DownloadError, "Too many redirects" if redirect_limit.zero?
 
       http = Net::HTTP.new(uri.host, uri.port)
       http.use_ssl = (uri.scheme == "https")
@@ -248,7 +250,7 @@ module Kabosu
     end
 
     def extract(zip_path, dest_dir)
-      $stderr.puts "Extracting..."
+      warn "Extracting..."
       Zip::File.open(zip_path) do |archive|
         archive.each do |entry|
           target = File.join(dest_dir, entry.name)
@@ -256,6 +258,7 @@ module Kabosu
           unless File.expand_path(target).start_with?(File.expand_path(dest_dir) + File::SEPARATOR)
             raise DownloadError, "Refusing to extract entry outside dest_dir: #{entry.name}"
           end
+
           FileUtils.mkdir_p(File.dirname(target))
           entry.extract(target) { true } # overwrite existing
         end

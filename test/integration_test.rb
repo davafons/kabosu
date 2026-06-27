@@ -1,11 +1,13 @@
 require_relative "test_helper"
 require "kabosu"
 
-# These tests verify that our Ruby layer correctly represents what comes back
-# from the Rust extension. Rather than comparing against the CLI (which calls
-# the same library), we assert known linguistic properties of Japanese text.
-# A correct Sudachi output must satisfy these properties regardless of
-# dictionary version — if any assertion fails, our mapping is broken.
+# Exercises kabosu's own API behavior end-to-end against a real dictionary:
+# split modes, Morpheme#split, the Kabosu.tokenize convenience wrapper,
+# Dictionary.new / lookup, group_morphemes, and thread safety.
+#
+# Field-level correctness (that every surface, POS, reading, offset, etc. equals
+# what raw sudachi.rs produces) is verified exhaustively in conformance_test.rb,
+# so it is intentionally not re-asserted here.
 class IntegrationTest < Minitest::Test
   include RequiresDictionary
 
@@ -14,26 +16,6 @@ class IntegrationTest < Minitest::Test
     @dict = Kabosu::Dictionary.new(system_dict: Kabosu::Dictionary.path)
     @tok_c = @dict.create(mode: :c)
     @tok_a = @dict.create(mode: :a)
-  end
-
-  # ── MorphemeList return type ──
-
-  def test_tokenize_returns_morpheme_list
-    assert_instance_of Kabosu::MorphemeList, @tok_c.tokenize("東京")
-  end
-
-  # ── Surface faithfully reconstructs input ──
-
-  def test_surfaces_reconstruct_input
-    input = "東京都に住んでいる"
-    result = @tok_c.tokenize(input)
-    assert_equal input, result.surfaces.join
-  end
-
-  def test_surfaces_reconstruct_input_mode_a
-    input = "東京都に住んでいる"
-    result = @tok_a.tokenize(input)
-    assert_equal input, result.surfaces.join
   end
 
   # ── Split modes produce different granularities ──
@@ -66,126 +48,6 @@ class IntegrationTest < Minitest::Test
     m = @tok_c.tokenize("東京").first
     assert_raises(ArgumentError) { m.split(mode: :x) }
     assert_raises(ArgumentError) { m.split(mode: "A") }
-  end
-
-  # ── Part of speech ──
-
-  def test_part_of_speech_is_array_of_six_strings
-    result = @tok_c.tokenize("東京")
-    result.each do |m|
-      pos = m.part_of_speech
-      assert_instance_of Array, pos
-      assert_equal 6, pos.size
-      pos.each { assert_instance_of String, _1 }
-    end
-  end
-
-  def test_tokyo_is_proper_noun
-    m = @tok_c.tokenize("東京").first
-    assert_equal "名詞",   m.part_of_speech[0]
-    assert_equal "固有名詞", m.part_of_speech[1]
-  end
-
-  def test_particle_ni_is_joshi
-    m = @tok_c.tokenize("東京に").last
-    assert_equal "助詞", m.part_of_speech[0]
-  end
-
-  # ── Reading form is katakana ──
-
-  def test_reading_form_is_katakana
-    result = @tok_c.tokenize("東京都に住んでいる")
-    result.reject { _1.oov? }.each do |m|
-      # Katakana range: U+30A0–U+30FF, plus ー, ヴ
-      assert_match(/\A[\u30A0-\u30FF]+\z/, m.reading_form,
-                   "Expected katakana reading for '#{m.surface}', got '#{m.reading_form}'")
-    end
-  end
-
-  # ── Dictionary form is the lemma ──
-
-  def test_inflected_verb_dictionary_form
-    # 食べました → dictionary form should be 食べる
-    morphemes = @tok_c.tokenize("食べました")
-    tabe = morphemes.find { _1.surface == "食べ" }
-    assert tabe, "Expected to find 食べ morpheme"
-    assert_equal "食べる", tabe.dictionary_form
-  end
-
-  def test_dictionary_form_for_uninflected_word_equals_surface
-    m = @tok_c.tokenize("東京").first
-    assert_equal m.surface, m.dictionary_form
-  end
-
-  # ── Normalized form ──
-
-  def test_normalized_form_is_string
-    @tok_c.tokenize("東京都").each do |m|
-      assert_instance_of String, m.normalized_form
-      refute_empty m.normalized_form
-    end
-  end
-
-  def test_word_info_additional_fields_have_expected_types
-    m = @tok_c.tokenize("東京都").first
-
-    assert_kind_of Integer, m.dictionary_form_word_id
-    assert_kind_of Integer, m.head_word_length
-    assert_kind_of Array, m.a_unit_split
-    assert_kind_of Array, m.b_unit_split
-    assert_kind_of Array, m.word_structure
-    assert m.a_unit_split.all? { _1.is_a?(Integer) }
-    assert m.b_unit_split.all? { _1.is_a?(Integer) }
-    assert m.word_structure.all? { _1.is_a?(Integer) }
-  end
-
-  # ── OOV detection ──
-
-  def test_common_words_are_not_oov
-    result = @tok_c.tokenize("東京都に住んでいる")
-    assert result.none?(&:oov?), "Expected no OOV in a common sentence"
-  end
-
-  def test_gibberish_may_be_oov
-    result = @tok_c.tokenize("zzz")
-    # Not guaranteed, but gibberish ASCII should appear somewhere
-    assert_equal "zzz", result.surfaces.join
-  end
-
-  # ── Byte offsets ──
-
-  def test_begin_end_are_byte_offsets_into_original_input
-    input = "東京都"
-    result = @tok_c.tokenize(input)
-    # begin of first morpheme is 0, end of last equals byte length of input
-    assert_equal 0, result.first.begin
-    assert_equal input.bytesize, result.last.end
-  end
-
-  def test_offsets_are_contiguous
-    input = "東京都に住んでいる"
-    result = @tok_c.tokenize(input)
-    result.each_cons(2) do |a, b|
-      assert_equal a.end, b.begin,
-        "Gap between '#{a.surface}' (end=#{a.end}) and '#{b.surface}' (begin=#{b.begin})"
-    end
-  end
-
-  # ── part_of_speech_id ──
-
-  def test_part_of_speech_id_is_integer
-    @tok_c.tokenize("東京").each do |m|
-      assert_kind_of Integer, m.part_of_speech_id
-    end
-  end
-
-  def test_part_of_speech_id_is_consistent_for_same_pos
-    # Two tokens with the same POS string should share the same id
-    result = @tok_c.tokenize("東京に大阪に")
-    particles = result.select { _1.part_of_speech[0] == "助詞" }
-    assert_operator particles.size, :>=, 2
-    ids = particles.map(&:part_of_speech_id).uniq
-    assert_equal 1, ids.size, "Same POS should have same id"
   end
 
   # ── Kabosu.tokenize convenience ──
@@ -252,13 +114,13 @@ class IntegrationTest < Minitest::Test
 
     assert_instance_of Kabosu::MorphemeList, matches
     assert_operator matches.size, :>, 0
-    assert matches.all? { _1.is_a?(Kabosu::Morpheme) }
+    assert(matches.all?(Kabosu::Morpheme))
 
     matches.each do |m|
       assert_equal 0, m.begin
       assert_operator m.end, :<=, query.bytesize
       assert query.start_with?(m.surface),
-        "Expected '#{m.surface}' to be a prefix of '#{query}'"
+             "Expected '#{m.surface}' to be a prefix of '#{query}'"
       assert_equal m.surface.bytesize, m.end
     end
   end
@@ -269,7 +131,7 @@ class IntegrationTest < Minitest::Test
     tokens = @tok_c.tokenize("食べてみた")
     grouped = tokens.group_morphemes
     assert_operator grouped.size, :<, tokens.size,
-      "group_morphemes must merge inflectional suffixes into fewer groups"
+                    "group_morphemes must merge inflectional suffixes into fewer groups"
   end
 
   def test_group_morphemes_te_form_chain_absorbed
@@ -298,7 +160,7 @@ class IntegrationTest < Minitest::Test
     # The Rust path and Ruby fallback must produce identical grouping for any
     # input, otherwise consumers that materialize the list first will see
     # different behavior.
-    inputs = ["食べた", "食べない", "食べます", "住んでいる", "食べながら働く", "食べてみた"]
+    inputs = %w[食べた 食べない 食べます 住んでいる 食べながら働く 食べてみた]
 
     inputs.each do |text|
       native = @tok_c.tokenize(text).group_morphemes
@@ -308,7 +170,8 @@ class IntegrationTest < Minitest::Test
       fallback_surfaces = fallback.map { |g| g.map(&:surface).join }
 
       assert_equal native_surfaces, fallback_surfaces,
-        "Native and fallback diverged for #{text.inspect}: native=#{native_surfaces.inspect} fallback=#{fallback_surfaces.inspect}"
+                   "Native and fallback diverged for #{text.inspect}: " \
+                   "native=#{native_surfaces.inspect} fallback=#{fallback_surfaces.inspect}"
     end
   end
 end

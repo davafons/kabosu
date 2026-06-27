@@ -1,0 +1,11 @@
+{
+  "sudachi_tag": "v0.6.11",
+  "dict_edition": "core",
+  "dict_version": "20260116",
+  "corpus_sha256": "6c2bf11f7385b7f41457242ec5e182aac0b763242b3c7feca5aa6c571fc7fdab",
+  "modes": [
+    "A",
+    "B",
+    "C"
+  ]
+}

@@ -254,7 +254,10 @@ impl RbMorpheme {
         let pos_id = self.data.pos_id;
 
         {
-            let cache = POS_CACHE.get_or_init(|| Mutex::new(HashMap::new())).lock().unwrap();
+            let cache = POS_CACHE
+                .get_or_init(|| Mutex::new(HashMap::new()))
+                .lock()
+                .unwrap();
             if let Some(&cached) = cache.get(&(dict_ptr, pos_id)) {
                 return Ok(cached.0);
             }
@@ -272,7 +275,11 @@ impl RbMorpheme {
         // arrays are tiny. The cache lives for the process lifetime.
         gc::register_mark_object(ary);
 
-        POS_CACHE.get_or_init(|| Mutex::new(HashMap::new())).lock().unwrap().insert((dict_ptr, pos_id), CachedRArray(ary));
+        POS_CACHE
+            .get_or_init(|| Mutex::new(HashMap::new()))
+            .lock()
+            .unwrap()
+            .insert((dict_ptr, pos_id), CachedRArray(ary));
 
         Ok(ary)
     }

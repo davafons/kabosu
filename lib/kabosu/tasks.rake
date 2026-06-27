@@ -5,53 +5,54 @@ namespace :kabosu do
 
   desc "Install the core dictionary (default). VERSION=YYYYMMDD to pin a specific release."
   task :install do
-    Kabosu::DictManager.new.install("core", version: ENV["VERSION"])
+    Kabosu::DictManager.new.install("core", version: ENV.fetch("VERSION", nil))
   end
 
   namespace :install do
     desc "Install the small dictionary. VERSION=YYYYMMDD to pin a specific release."
     task :small do
-      Kabosu::DictManager.new.install("small", version: ENV["VERSION"])
+      Kabosu::DictManager.new.install("small", version: ENV.fetch("VERSION", nil))
     end
 
     desc "Install the core dictionary. VERSION=YYYYMMDD to pin a specific release."
     task :core do
-      Kabosu::DictManager.new.install("core", version: ENV["VERSION"])
+      Kabosu::DictManager.new.install("core", version: ENV.fetch("VERSION", nil))
     end
 
     desc "Install the full dictionary. VERSION=YYYYMMDD to pin a specific release."
     task :full do
-      Kabosu::DictManager.new.install("full", version: ENV["VERSION"])
+      Kabosu::DictManager.new.install("full", version: ENV.fetch("VERSION", nil))
     end
   end
 
-  desc "Install a dictionary only if a matching one isn't already on disk. EDITION=core|small|full (default core), VERSION=YYYYMMDD optional."
+  desc "Install a dictionary only if a matching one isn't already on disk. " \
+       "EDITION=core|small|full (default core), VERSION=YYYYMMDD optional."
   task :install_if_missing do
     edition = ENV["EDITION"] || "core"
-    Kabosu::DictManager.new.install_if_missing(edition, version: ENV["VERSION"])
+    Kabosu::DictManager.new.install_if_missing(edition, version: ENV.fetch("VERSION", nil))
   end
 
   # ── Remove ──
 
   desc "Remove all installed dictionaries, or a specific one with EDITION=small|core|full and/or VERSION=YYYYMMDD"
   task :remove do
-    Kabosu::DictManager.new.remove(edition: ENV["EDITION"], version: ENV["VERSION"])
+    Kabosu::DictManager.new.remove(edition: ENV.fetch("EDITION", nil), version: ENV.fetch("VERSION", nil))
   end
 
   namespace :remove do
     desc "Remove the small dictionary."
     task :small do
-      Kabosu::DictManager.new.remove(edition: "small", version: ENV["VERSION"])
+      Kabosu::DictManager.new.remove(edition: "small", version: ENV.fetch("VERSION", nil))
     end
 
     desc "Remove the core dictionary."
     task :core do
-      Kabosu::DictManager.new.remove(edition: "core", version: ENV["VERSION"])
+      Kabosu::DictManager.new.remove(edition: "core", version: ENV.fetch("VERSION", nil))
     end
 
     desc "Remove the full dictionary."
     task :full do
-      Kabosu::DictManager.new.remove(edition: "full", version: ENV["VERSION"])
+      Kabosu::DictManager.new.remove(edition: "full", version: ENV.fetch("VERSION", nil))
     end
   end
 
@@ -82,11 +83,9 @@ namespace :kabosu do
 
   desc "Show the path to the best available dictionary. EDITION=small|core|full to be specific."
   task :path do
-    begin
-      puts Kabosu::DictManager.new.find(edition: ENV["EDITION"])
-    rescue Kabosu::DictManager::DictNotFound => e
-      $stderr.puts e.message
-      exit 1
-    end
+    puts Kabosu::DictManager.new.find(edition: ENV.fetch("EDITION", nil))
+  rescue Kabosu::DictManager::DictNotFound => e
+    warn e.message
+    exit 1
   end
 end

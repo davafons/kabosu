@@ -1,3 +1,8 @@
+// sudachi::error::SudachiError is a large external enum; boxing it to satisfy
+// clippy::result_large_err would churn Result signatures throughout the crate
+// for no real benefit on these cold error paths.
+#![allow(clippy::result_large_err)]
+
 mod dictionary;
 mod errors;
 mod grouping;

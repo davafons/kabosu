@@ -2,12 +2,9 @@ require_relative "test_helper"
 require "kabosu/morpheme_list"
 require "kabosu/pos_matcher"
 
-# Lightweight stand-in for Kabosu::Morpheme without needing the Rust extension
-MockMorpheme = Struct.new(:surface, :part_of_speech, keyword_init: true) unless defined?(MockMorpheme)
-
 class PosMatcherTest < Minitest::Test
   def setup
-    @noun_pos       = %w[名詞 普通名詞 一般 * * *]
+    @noun_pos = %w[名詞 普通名詞 一般 * * *]
     @proper_noun_pos = %w[名詞 固有名詞 地名 一般 * *]
     @verb_pos       = %w[動詞 一般 * * * *]
     @particle_pos   = %w[助詞 格助詞 * * * *]
@@ -39,10 +36,10 @@ class PosMatcherTest < Minitest::Test
   end
 
   def test_construct_from_multiple_patterns
-    matcher = Kabosu::PosMatcher.new(["名詞", "固有名詞"], ["動詞"])
+    matcher = Kabosu::PosMatcher.new(%w[名詞 固有名詞], ["動詞"])
     assert matcher.match?(@proper_noun_pos)
     assert matcher.match?(@verb_pos)
-    refute matcher.match?(@noun_pos)  # 普通名詞, not 固有名詞
+    refute matcher.match?(@noun_pos) # 普通名詞, not 固有名詞
     refute matcher.match?(@particle_pos)
   end
 
@@ -81,7 +78,7 @@ class PosMatcherTest < Minitest::Test
   # ── match? with morpheme objects ──
 
   def test_match_with_morpheme_object
-    matcher = Kabosu::PosMatcher.new(["名詞", "固有名詞"])
+    matcher = Kabosu::PosMatcher.new(%w[名詞 固有名詞])
     assert matcher.match?(@tokyo)
     refute matcher.match?(@ni)
   end
@@ -135,13 +132,13 @@ class PosMatcherTest < Minitest::Test
     combined = nouns & proper
 
     assert combined.match?(@proper_noun_pos)
-    refute combined.match?(@noun_pos)  # 普通名詞
+    refute combined.match?(@noun_pos) # 普通名詞
     refute combined.match?(@verb_pos)
   end
 
   def test_difference_with_operator
     nouns = Kabosu::PosMatcher.new(["名詞"])
-    proper = Kabosu::PosMatcher.new(["名詞", "固有名詞"])
+    proper = Kabosu::PosMatcher.new(%w[名詞 固有名詞])
     combined = nouns - proper
 
     assert combined.match?(@noun_pos)
@@ -151,7 +148,7 @@ class PosMatcherTest < Minitest::Test
 
   def test_difference_method
     nouns = Kabosu::PosMatcher.new(["名詞"])
-    proper = Kabosu::PosMatcher.new(["名詞", "固有名詞"])
+    proper = Kabosu::PosMatcher.new(%w[名詞 固有名詞])
     combined = nouns.difference(proper)
 
     assert combined.match?(@noun_pos)
@@ -203,7 +200,7 @@ class PosMatcherTest < Minitest::Test
 
   def test_proper_nouns_matcher
     assert Kabosu::PosMatcher.proper_nouns.match?(@proper_noun_pos)
-    refute Kabosu::PosMatcher.proper_nouns.match?(@noun_pos)  # 普通名詞
+    refute Kabosu::PosMatcher.proper_nouns.match?(@noun_pos) # 普通名詞
     refute Kabosu::PosMatcher.proper_nouns.match?(@verb_pos)
   end
 
@@ -226,7 +223,7 @@ class PosMatcherTest < Minitest::Test
   end
 
   def test_match_shorter_pos_than_pattern
-    matcher = Kabosu::PosMatcher.new(["名詞", "固有名詞", "地名"])
+    matcher = Kabosu::PosMatcher.new(%w[名詞 固有名詞 地名])
     refute matcher.match?(%w[名詞 固有名詞])
   end
 

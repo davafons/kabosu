@@ -74,7 +74,9 @@ fn bench_tokenize_mt(
 
     let elapsed_shared = start.elapsed().as_secs_f64();
     let mb_shared = total_bytes_shared as f64 / (1024.0 * 1024.0);
-    println!("shared tok:      {elapsed_shared:>8.3}s  ({threads} threads x {requests_per_thread} req)");
+    println!(
+        "shared tok:      {elapsed_shared:>8.3}s  ({threads} threads x {requests_per_thread} req)"
+    );
     println!(
         "Throughput ST: {:.2} MB/s (shared tokenizer)",
         mb_shared / elapsed_shared
@@ -122,7 +124,9 @@ fn main() {
     let args: Vec<String> = env::args().collect();
 
     if args.len() < 2 {
-        eprintln!("Usage: kabosu-bench <fixture_path> [dict_path] [--mt <threads> <requests_per_thread>]");
+        eprintln!(
+            "Usage: kabosu-bench <fixture_path> [dict_path] [--mt <threads> <requests_per_thread>]"
+        );
         std::process::exit(1);
     }
 
@@ -185,7 +189,10 @@ fn main() {
     }
     let elapsed = start.elapsed().as_secs_f64();
     let mb = (text.len() * iterations) as f64 / (1024.0 * 1024.0);
-    println!("Throughput: {:.2} MB/s (mode C, {iterations} iterations)", mb / elapsed);
+    println!(
+        "Throughput: {:.2} MB/s (mode C, {iterations} iterations)",
+        mb / elapsed
+    );
 
     if let Some((threads, requests_per_thread)) = mt {
         let mt_sentences: Vec<String> = sentences.iter().map(|s| (*s).to_string()).collect();

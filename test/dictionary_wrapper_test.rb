@@ -4,8 +4,8 @@ require "kabosu"
 class DictionaryWrapperTest < Minitest::Test
   def with_stubbed_dictionary_singleton
     singleton = class << Kabosu::Dictionary
-      self
-    end
+                  self
+                end
 
     singleton.class_eval do
       alias_method :__orig_new_for_test, :_new
@@ -38,7 +38,7 @@ class DictionaryWrapperTest < Minitest::Test
   def test_dictionary_new_passes_system_dict_with_default_config
     with_stubbed_dictionary_singleton do
       assert_equal [Kabosu::Dictionary::DEFAULT_CONFIG_PATH, "/tmp/system.dic", nil],
-        Kabosu::Dictionary.new(system_dict: "/tmp/system.dic")
+                   Kabosu::Dictionary.new(system_dict: "/tmp/system.dic")
     end
   end
 
@@ -46,7 +46,7 @@ class DictionaryWrapperTest < Minitest::Test
     with_stubbed_dictionary_singleton do
       user_dicts = ["/tmp/domain.dic", "/tmp/names.dic"]
       assert_equal [Kabosu::Dictionary::DEFAULT_CONFIG_PATH, "/tmp/system.dic", user_dicts],
-        Kabosu::Dictionary.new(system_dict: "/tmp/system.dic", user_dicts: user_dicts)
+                   Kabosu::Dictionary.new(system_dict: "/tmp/system.dic", user_dicts: user_dicts)
     end
   end
 
@@ -70,11 +70,11 @@ class DictionaryWrapperTest < Minitest::Test
   def test_dictionary_new_wraps_config_errors
     with_stubbed_dictionary_singleton do
       singleton = class << Kabosu::Dictionary
-        self
-      end
+                    self
+                  end
       singleton.send(:remove_method, :_new)
       singleton.send(:define_method, :_new) do |_config, _system_dict, _user_dicts|
-        raise RuntimeError, "failed to parse setting.json"
+        raise "failed to parse setting.json"
       end
 
       assert_raises(Kabosu::ConfigError) { Kabosu::Dictionary.new(config: "/tmp/sudachi.json") }
@@ -84,11 +84,11 @@ class DictionaryWrapperTest < Minitest::Test
   def test_dictionary_new_wraps_dictionary_errors
     with_stubbed_dictionary_singleton do
       singleton = class << Kabosu::Dictionary
-        self
-      end
+                    self
+                  end
       singleton.send(:remove_method, :_new)
       singleton.send(:define_method, :_new) do |_config, _system_dict, _user_dicts|
-        raise RuntimeError, "dictionary not found"
+        raise "dictionary not found"
       end
 
       assert_raises(Kabosu::DictionaryError) { Kabosu::Dictionary.new(system_dict: "/tmp/system.dic") }

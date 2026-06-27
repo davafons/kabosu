@@ -7,7 +7,7 @@ module Kabosu
     def initialize(source_or_morphemes, internal_cost: nil)
       @source = source_or_morphemes if lazy_source?(source_or_morphemes)
       @morphemes = @source ? Array.new(@source.size) : source_or_morphemes
-      @internal_cost = internal_cost || (@source&.internal_cost)
+      @internal_cost = internal_cost || @source&.internal_cost
     end
 
     def each(&block)
@@ -62,7 +62,7 @@ module Kabosu
     end
 
     def surfaces
-      return @source.surfaces if @source&.respond_to?(:surfaces)
+      return @source.surfaces if @source.respond_to?(:surfaces)
 
       map(&:surface)
     end
@@ -96,9 +96,7 @@ module Kabosu
     # source. Falls back to a Ruby implementation for already-materialized
     # lists so the method is always safe to call.
     def group_morphemes
-      if @source&.respond_to?(:group_morphemes)
-        return @source.group_morphemes
-      end
+      return @source.group_morphemes if @source.respond_to?(:group_morphemes)
 
       groups = []
       each do |m|
@@ -131,10 +129,12 @@ module Kabosu
 
     def clause_boundary?(morpheme)
       return false unless morpheme
+
       pos = morpheme.part_of_speech
       return true if pos[0] == "助詞" &&
                      %w[ながら たら ば と のに から ので けれど けど つつ なり や か かどうか とも].include?(morpheme.surface)
       return true if pos[0] == "助詞" && pos[1] == "接続助詞" && morpheme.surface == "が"
+
       false
     end
 

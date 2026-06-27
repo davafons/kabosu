@@ -1,0 +1,21 @@
+# Conformance reference dumper. Links the EXACT same sudachi.rs tag that the
+# kabosu extension links (keep this in sync with ext/kabosu/Cargo.toml), loads
+# the same dictionary, and dumps one JSON record per morpheme. The Ruby
+# conformance test asserts kabosu produces byte-identical fields. Any
+# divergence is therefore a bug in kabosu's binding layer, not in sudachi.
+# Standalone crate: opt out of the gem's root workspace.
+[workspace]
+
+[package]
+name = "kabosu-conformance-reference"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "reference_dump"
+path = "src/main.rs"
+
+[dependencies]
+sudachi = { git = "https://github.com/WorksApplications/sudachi.rs", tag = "v0.6.11" }
+serde_json = "1"

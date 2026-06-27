@@ -1,0 +1,29 @@
+# Shared conformance/parity corpus. One input per line; blank lines and lines
+# starting with '#' are ignored. Chosen to exercise the analyzer broadly:
+# proper nouns, inflection, te-form chains, OOV, ASCII, the numeric/katakana
+# join path-rewrite plugins, prolonged sound marks, and yomigana-in-parens.
+東京都に住んでいる
+東京都
+食べました
+住んでいる
+食べてみた
+食べながら働く
+国会議事堂前駅
+大阪も好きだ
+吾輩は猫である。
+名前はまだ無い。
+すもももももももものうち
+1234円を支払った
+二千十六年三月
+コンピューター
+データベースサーバー
+スーパーマーケットで買い物
+東京（とうきょう）に行く
+彼はPythonとRubyが好きだ
+zzz
+ＡＢＣ１２３
+お疲れ様でした
+走れメロスを読んだ
+新しい家を建てる
+きれいな花が咲いている
+日本語の形態素解析は難しい

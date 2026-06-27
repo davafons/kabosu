@@ -19,3 +19,8 @@ Gemfile.lock
 /bench/flamegraph-*.svg
 /bench/stacks-*.txt
 /bench/perf-*.data
+# Conformance/parity tooling: ignore build artifacts, keep the small JSONL
+# fixtures (test/**/fixtures/*) committed so `rake test` runs without a Rust or
+# Python toolchain.
+/test/conformance/reference/target/
+/test/parity/venv/

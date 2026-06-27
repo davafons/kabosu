@@ -48,13 +48,15 @@ module Kabosu
 
     # Union: matches if either matcher matches.
     def |(other)
-      a, b = self, other
+      a = self
+      b = other
       PosMatcher.new { |pos| a.match?(pos) || b.match?(pos) }
     end
 
     # Intersection: matches if both matchers match.
     def &(other)
-      a, b = self, other
+      a = self
+      b = other
       PosMatcher.new { |pos| a.match?(pos) && b.match?(pos) }
     end
 
@@ -64,7 +66,8 @@ module Kabosu
     end
 
     def difference(other)
-      a, b = self, other
+      a = self
+      b = other
       PosMatcher.new { |pos| a.match?(pos) && !b.match?(pos) }
     end
 
@@ -95,7 +98,7 @@ module Kabosu
     end
 
     def self.proper_nouns
-      @proper_nouns ||= new(["名詞", "固有名詞"])
+      @proper_nouns ||= new(%w[名詞 固有名詞])
     end
 
     private

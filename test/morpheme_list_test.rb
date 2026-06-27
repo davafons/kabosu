@@ -1,11 +1,6 @@
 require_relative "test_helper"
 require "kabosu/morpheme_list"
 
-# Lightweight stand-in for Kabosu::Morpheme without needing the Rust extension
-MockMorpheme = Struct.new(:surface, :reading_form, :dictionary_form,
-                          :normalized_form, :part_of_speech, :oov?,
-                          keyword_init: true)
-
 class MorphemeListTest < Minitest::Test
   def setup
     @morphemes = [
@@ -17,7 +12,7 @@ class MorphemeListTest < Minitest::Test
                        part_of_speech: %w[名詞 普通名詞 一般 * * *], oov?: false),
       MockMorpheme.new(surface: "に", reading_form: "ニ",
                        dictionary_form: "に", normalized_form: "に",
-                       part_of_speech: %w[助詞 格助詞 * * * *], oov?: false),
+                       part_of_speech: %w[助詞 格助詞 * * * *], oov?: false)
     ]
     @list = Kabosu::MorphemeList.new(@morphemes)
   end
@@ -26,7 +21,8 @@ class MorphemeListTest < Minitest::Test
 
   def test_each_yields_morphemes
     yielded = []
-    @list.each { yielded << _1 }
+    # Deliberately exercises #each (the method under test), not #map.
+    @list.each { yielded << _1 } # rubocop:disable Style/MapIntoArray
     assert_equal @morphemes, yielded
   end
 
@@ -44,8 +40,8 @@ class MorphemeListTest < Minitest::Test
   end
 
   def test_any
-    assert @list.any? { _1.surface == "東京" }
-    refute @list.any? { _1.surface == "大阪" }
+    assert(@list.any? { _1.surface == "東京" })
+    refute(@list.any? { _1.surface == "大阪" })
   end
 
   def test_none
@@ -94,8 +90,11 @@ class MorphemeListTest < Minitest::Test
   # ── group_morphemes delegation + fallback ──
 
   def test_group_morphemes_delegates_to_source_when_available
+    # The mock intentionally defines a `size` member mirroring the lazy source.
+    # rubocop:disable Lint/StructNewOverride
     source = Struct.new(:morpheme_at, :size, :surfaces, :group_morphemes, :internal_cost)
-                .new(nil, 0, [], [["from_source"]], nil)
+                   .new(nil, 0, [], [["from_source"]], nil)
+    # rubocop:enable Lint/StructNewOverride
 
     list = Kabosu::MorphemeList.new(source)
     result = list.group_morphemes
@@ -115,7 +114,7 @@ class MorphemeListTest < Minitest::Test
                        part_of_speech: %w[助詞 接続助詞 * * * *], oov?: false),
       MockMorpheme.new(surface: "いる", reading_form: "イル",
                        dictionary_form: "いる", normalized_form: "いる",
-                       part_of_speech: %w[動詞 非自立可能 * * * 連用形], oov?: false),
+                       part_of_speech: %w[動詞 非自立可能 * * * 連用形], oov?: false)
     ]
     list = Kabosu::MorphemeList.new(morphemes)
     grouped = list.group_morphemes
@@ -135,7 +134,7 @@ class MorphemeListTest < Minitest::Test
                        part_of_speech: %w[助詞 接続助詞 * * * *], oov?: false),
       MockMorpheme.new(surface: "働く", reading_form: "ハタラク",
                        dictionary_form: "働く", normalized_form: "働く",
-                       part_of_speech: %w[動詞 一般 * * * 終止形], oov?: false),
+                       part_of_speech: %w[動詞 一般 * * * 終止形], oov?: false)
     ]
     list = Kabosu::MorphemeList.new(morphemes)
     grouped = list.group_morphemes

@@ -1,6 +1,6 @@
 [package]
 name = "kabosu"
-version = "0.6.10"
+version = "0.6.11"
 edition = "2021"
 publish = false
 
@@ -9,4 +9,4 @@ crate-type = ["cdylib"]
 
 [dependencies]
 magnus = { version = "0.8", features = ["rb-sys"] }
-sudachi = { git = "https://github.com/WorksApplications/sudachi.rs", tag = "v0.6.10" }
+sudachi = { git = "https://github.com/WorksApplications/sudachi.rs", tag = "v0.6.11" }

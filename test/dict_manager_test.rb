@@ -139,7 +139,7 @@ class DictManagerTest < Minitest::Test
     @manager.remove(edition: "small", version: "20260116")
     remaining = @manager.installed
     assert_equal 2, remaining.size
-    refute remaining.any? { _1[:edition] == "small" && _1[:version] == "20260116" }
+    refute(remaining.any? { _1[:edition] == "small" && _1[:version] == "20260116" })
   end
 
   def test_remove_cleans_up_empty_version_directory
@@ -182,7 +182,7 @@ class DictManagerTest < Minitest::Test
   end
 
   def test_default_dir_honors_env_var
-    original = ENV["KABOSU_DICT_DIR"]
+    original = ENV.fetch("KABOSU_DICT_DIR", nil)
     ENV["KABOSU_DICT_DIR"] = "/tmp/custom-kabosu-dict"
     assert_equal "/tmp/custom-kabosu-dict", Kabosu::DictManager.default_dir
   ensure

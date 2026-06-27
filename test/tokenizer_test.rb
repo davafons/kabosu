@@ -13,8 +13,8 @@ class TokenizerTest < Minitest::Test
 
   def with_stubbed_singleton_method(receiver, method_name, replacement)
     singleton = class << receiver
-      self
-    end
+                  self
+                end
     original = receiver.method(method_name)
     begin
       singleton.send(:remove_method, method_name)
@@ -64,7 +64,7 @@ class TokenizerTest < Minitest::Test
   end
 
   def test_tokenize_wraps_runtime_errors
-    replacement = ->(_text) { raise RuntimeError, "native tokenize failure" }
+    replacement = ->(_text) { raise "native tokenize failure" }
     with_stubbed_singleton_method(@tok_c, :_tokenize, replacement) do
       error = assert_raises(Kabosu::TokenizationError) { @tok_c.tokenize("東京") }
       assert_match(/native tokenize failure/, error.message)
@@ -82,11 +82,11 @@ class TokenizerTest < Minitest::Test
   # ── Multiple sequential tokenize calls (buffer reuse) ──
 
   def test_multiple_sequential_tokenize_calls
-    inputs = ["東京都に住んでいる", "大阪も好きだ", "食べました"]
+    inputs = %w[東京都に住んでいる 大阪も好きだ 食べました]
     inputs.each do |input|
       result = @tok_c.tokenize(input)
       assert_equal input, result.surfaces.join,
-        "Failed to reconstruct '#{input}' on sequential call"
+                   "Failed to reconstruct '#{input}' on sequential call"
     end
   end
 
@@ -204,7 +204,7 @@ class TokenizerTest < Minitest::Test
     input = "東京都に住んでいる。大阪も好きだ。"
     result = Kabosu.split_sentences(input, ranges: true)
     assert_operator result.size, :>=, 2
-    assert result.all? { _1.is_a?(Kabosu::SentenceRange) }
+    assert(result.all?(Kabosu::SentenceRange))
 
     rebuilt = result.map(&:text).join
     assert_equal input, rebuilt
@@ -253,7 +253,7 @@ class TokenizerTest < Minitest::Test
   end
 
   def test_split_sentences_wraps_runtime_errors
-    replacement = ->(_text, _limit, _dict_path) { raise RuntimeError, "native split failure" }
+    replacement = ->(_text, _limit, _dict_path) { raise "native split failure" }
     with_stubbed_singleton_method(Kabosu, :_split_sentences, replacement) do
       error = assert_raises(Kabosu::SentenceSplitError) { Kabosu.split_sentences("東京。") }
       assert_match(/native split failure/, error.message)

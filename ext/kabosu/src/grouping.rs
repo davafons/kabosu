@@ -39,17 +39,16 @@ pub(crate) fn group_morphemes_rust(
 // POS helpers
 
 fn is_content_word(pos_id: u16, dict: &JapaneseDictionary) -> bool {
-    match dict.grammar().pos_components(pos_id).first().map(|s| s.as_str()) {
-        Some("助詞") | Some("助動詞") | Some("補助記号") | Some("記号") | Some("空白") => false,
-        _ => true,
-    }
+    !matches!(
+        dict.grammar()
+            .pos_components(pos_id)
+            .first()
+            .map(|s| s.as_str()),
+        Some("助詞") | Some("助動詞") | Some("補助記号") | Some("記号") | Some("空白")
+    )
 }
 
-fn extends_group(
-    m: &MorphemeData,
-    prev: &MorphemeData,
-    dict: &JapaneseDictionary,
-) -> bool {
+fn extends_group(m: &MorphemeData, prev: &MorphemeData, dict: &JapaneseDictionary) -> bool {
     let comps = dict.grammar().pos_components(m.pos_id);
     let pos0 = comps.first().map(|s| s.as_str());
     let pos1 = comps.get(1).map(|s| s.as_str());
@@ -74,10 +73,12 @@ fn extends_group(
                 return false;
             }
             // te-form auxiliary chain: て/で + いる/ある/くる/etc.
-            let prev_pos0 = dict.grammar().pos_components(prev.pos_id).first().map(|s| s.as_str());
-            if prev_pos0 == Some("助詞")
-                && (prev.surface == "て" || prev.surface == "で")
-            {
+            let prev_pos0 = dict
+                .grammar()
+                .pos_components(prev.pos_id)
+                .first()
+                .map(|s| s.as_str());
+            if prev_pos0 == Some("助詞") && (prev.surface == "て" || prev.surface == "で") {
                 return true;
             }
             // compound verb (V+V) intentionally skipped — caller handles DB lookup
@@ -127,7 +128,10 @@ fn is_clause_boundary_particle(surface: &str) -> bool {
 
 fn is_verb_adj_adv(pos_id: u16, dict: &JapaneseDictionary) -> bool {
     matches!(
-        dict.grammar().pos_components(pos_id).first().map(|s| s.as_str()),
+        dict.grammar()
+            .pos_components(pos_id)
+            .first()
+            .map(|s| s.as_str()),
         Some("動詞") | Some("形容詞") | Some("形状詞")
     )
 }

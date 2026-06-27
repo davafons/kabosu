@@ -39,7 +39,7 @@ load File.expand_path("lib/kabosu/release.rake", __dir__)
 # crate's own default config path is captured at build time and isn't
 # usable from a precompiled gem.
 namespace :sudachi do
-  RESOURCE_FILES = %w[ sudachi.json char.def unk.def rewrite.def ].freeze
+  RESOURCE_FILES = %w[sudachi.json char.def unk.def rewrite.def].freeze
   BUNDLED_DIR = "lib/kabosu/resources".freeze
 
   desc "Sync bundled Sudachi resources from the resolved cargo dep"
@@ -75,6 +75,29 @@ namespace :sudachi do
       puts out
       abort "Run `rake sudachi:sync_resources` and commit the diff."
     end
+  end
+end
+
+# Conformance/parity fixture regeneration. The *_test.rb suites run in `rake
+# test` against committed JSONL fixtures and skip gracefully if a fixture is
+# missing or the installed dictionary has drifted. These tasks rebuild those
+# fixtures — run them after bumping the sudachi.rs tag or the dictionary.
+namespace :conformance do
+  desc "Regenerate raw-sudachi.rs conformance fixtures (needs a Rust toolchain)"
+  task :generate do
+    ruby "-Ilib", "test/conformance/generate.rb"
+  end
+end
+
+namespace :parity do
+  desc "Create the SudachiPy virtualenv used by the parity suite"
+  task :setup do
+    sh "test/parity/setup.sh"
+  end
+
+  desc "Regenerate SudachiPy parity fixtures (needs the parity:setup venv)"
+  task :generate do
+    ruby "-Ilib", "test/parity/generate.rb"
   end
 end
 

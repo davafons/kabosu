@@ -1,3 +1,6 @@
+# Standalone crate: opt out of the gem's root workspace.
+[workspace]
+
 [package]
 name = "kabosu-bench"
 version = "0.0.0"
@@ -5,4 +8,4 @@ edition = "2021"
 publish = false
 
 [dependencies]
-sudachi = { git = "https://github.com/WorksApplications/sudachi.rs", tag = "v0.6.10" }
+sudachi = { git = "https://github.com/WorksApplications/sudachi.rs", tag = "v0.6.11" }

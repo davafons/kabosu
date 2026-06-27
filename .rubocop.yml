@@ -1,0 +1,45 @@
+AllCops:
+  TargetRubyVersion: 3.1
+  NewCops: enable
+  SuggestExtensions: false
+  Exclude:
+    - "bench/**/*"
+    - "tmp/**/*"
+    - "pkg/**/*"
+    - "vendor/**/*"
+    - "test/parity/venv/**/*"
+    - "test/conformance/reference/**/*"
+
+# Match the existing house style (double quotes throughout).
+Style/StringLiterals:
+  EnforcedStyle: double_quotes
+Style/StringLiteralsInInterpolation:
+  EnforcedStyle: double_quotes
+
+# Low-value-for-this-codebase departments: complexity metrics flag the
+# inherently long validation/builder methods, and a binding gem doesn't need
+# enforced class docs or frozen-string magic comments.
+Metrics:
+  Enabled: false
+Style/Documentation:
+  Enabled: false
+Style/FrozenStringLiteralComment:
+  Enabled: false
+
+# Short parameter names (n, m) are idiomatic here.
+Naming/MethodParameterName:
+  MinNameLength: 1
+
+# `$?` is fine in the dev/generator scripts; not worth requiring 'English'.
+Style/SpecialGlobalVars:
+  Enabled: false
+
+# Defining constants inside namespace/task blocks is standard Rake idiom.
+Lint/ConstantDefinitionInBlock:
+  Exclude:
+    - "Rakefile"
+    - "**/*.rake"
+
+# This gem keeps its development dependencies in the gemspec, not the Gemfile.
+Gemspec/DevelopmentDependencies:
+  EnforcedStyle: gemspec

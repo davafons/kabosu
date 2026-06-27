@@ -66,25 +66,17 @@ module Kabosu
     DEFAULT_CONFIG_PATH = File.expand_path("kabosu/resources/sudachi.json", __dir__).freeze
 
     class << self
-      alias_method :_new, :new
+      alias _new new
 
       def new(config: nil, system_dict: nil, user_dicts: nil)
-        unless config.nil? || config.is_a?(String)
-          raise ArgumentError, "config must be a String or nil"
-        end
-        unless system_dict.nil? || system_dict.is_a?(String)
-          raise ArgumentError, "system_dict must be a String or nil"
-        end
+        raise ArgumentError, "config must be a String or nil" unless config.nil? || config.is_a?(String)
+        raise ArgumentError, "system_dict must be a String or nil" unless system_dict.nil? || system_dict.is_a?(String)
         unless user_dicts.nil? || user_dicts.is_a?(Array)
           raise ArgumentError, "user_dicts must be an Array<String> or nil"
         end
-        if user_dicts&.any? { !_1.is_a?(String) }
-          raise ArgumentError, "user_dicts must contain only String values"
-        end
+        raise ArgumentError, "user_dicts must contain only String values" if user_dicts&.any? { !_1.is_a?(String) }
 
-        if config.nil? && system_dict.nil?
-          raise ArgumentError, "either config or system_dict is required"
-        end
+        raise ArgumentError, "either config or system_dict is required" if config.nil? && system_dict.nil?
 
         # Default to the sudachi.json bundled with this gem when only
         # system_dict is given. sudachi.rs's own default config path is
@@ -113,9 +105,7 @@ module Kabosu
 
       def map_dictionary_init_error(error, config:, system_dict:)
         message = error.message
-        if config && system_dict.nil?
-          ConfigError.new(message)
-        elsif message.match?(/config|setting\.json|json/i)
+        if (config && system_dict.nil?) || message.match?(/config|setting\.json|json/i)
           ConfigError.new(message)
         else
           DictionaryError.new(message)
@@ -127,40 +117,33 @@ module Kabosu
       end
     end
 
-    alias_method :_create, :create
-    alias_method :_lookup, :lookup
+    alias _create create
+    alias _lookup lookup
 
     def create(**options)
       unknown = options.keys - %i[mode fields debug projection]
-      raise ArgumentError, "unknown keyword(s): #{unknown.join(', ')}" unless unknown.empty?
+      raise ArgumentError, "unknown keyword(s): #{unknown.join(", ")}" unless unknown.empty?
 
       mode = options.fetch(:mode, MODE_C)
       fields = options.fetch(:fields, nil)
       debug = options.fetch(:debug, false)
       projection = options.fetch(:projection, nil)
 
-      unless fields.nil? || fields.is_a?(Array)
-        raise ArgumentError, "fields must be an Array<String|Symbol> or nil"
-      end
+      raise ArgumentError, "fields must be an Array<String|Symbol> or nil" unless fields.nil? || fields.is_a?(Array)
       if fields&.any? { !(_1.is_a?(String) || _1.is_a?(Symbol)) }
         raise ArgumentError, "fields must contain only String or Symbol values"
       end
-      unless debug == true || debug == false
-        raise ArgumentError, "debug must be true or false"
-      end
+      raise ArgumentError, "debug must be true or false" unless [true, false].include?(debug)
 
-      unless projection.nil?
-        raise NotImplementedError, "projection is not supported yet"
-      end
+      raise NotImplementedError, "projection is not supported yet" unless projection.nil?
 
       mode_str = Kabosu.__send__(:normalize_mode, mode)
       _create(mode_str, fields, debug)
     end
 
     def lookup(text)
-      unless text.is_a?(String)
-        raise ArgumentError, "text must be a String"
-      end
+      raise ArgumentError, "text must be a String" unless text.is_a?(String)
+
       MorphemeList.new(_lookup(text))
     rescue RuntimeError => e
       raise LookupError.new(e.message), cause: e
@@ -170,12 +153,10 @@ module Kabosu
   # ── Tokenizer: wrap output in MorphemeList ──
 
   class Tokenizer
-    alias_method :_tokenize, :tokenize
+    alias _tokenize tokenize
 
     def tokenize(text)
-      unless text.is_a?(String)
-        raise ArgumentError, "text must be a String"
-      end
+      raise ArgumentError, "text must be a String" unless text.is_a?(String)
 
       batch = _tokenize(text)
       cost = batch.respond_to?(:internal_cost) ? batch.internal_cost : nil
@@ -186,12 +167,11 @@ module Kabosu
   end
 
   class Morpheme
-    alias_method :_split, :split
+    alias _split split
 
     def split(mode: MODE_C, add_single: true)
-      unless add_single == true || add_single == false
-        raise ArgumentError, "add_single must be true or false"
-      end
+      raise ArgumentError, "add_single must be true or false" unless [true, false].include?(add_single)
+
       mode_str = Kabosu.__send__(:normalize_mode, mode)
       MorphemeList.new(_split(mode_str, nil, add_single))
     rescue RuntimeError => e
@@ -200,29 +180,15 @@ module Kabosu
   end
 
   def self.split_sentences(text, limit: nil, with_checker: false, ranges: false, dictionary: nil)
-    unless text.is_a?(String)
-      raise ArgumentError, "text must be a String"
-    end
-    unless limit.nil? || limit.is_a?(Integer)
-      raise ArgumentError, "limit must be an Integer or nil"
-    end
-    if limit && limit < 1
-      raise ArgumentError, "limit must be greater than 0"
-    end
-    unless with_checker == true || with_checker == false
-      raise ArgumentError, "with_checker must be true or false"
-    end
-    unless ranges == true || ranges == false
-      raise ArgumentError, "ranges must be true or false"
-    end
-    unless dictionary.nil? || dictionary.is_a?(String)
-      raise ArgumentError, "dictionary must be a String path or nil"
-    end
+    raise ArgumentError, "text must be a String" unless text.is_a?(String)
+    raise ArgumentError, "limit must be an Integer or nil" unless limit.nil? || limit.is_a?(Integer)
+    raise ArgumentError, "limit must be greater than 0" if limit && limit < 1
+    raise ArgumentError, "with_checker must be true or false" unless [true, false].include?(with_checker)
+    raise ArgumentError, "ranges must be true or false" unless [true, false].include?(ranges)
+    raise ArgumentError, "dictionary must be a String path or nil" unless dictionary.nil? || dictionary.is_a?(String)
 
     dict_path = nil
-    if with_checker
-      dict_path = dictionary || Dictionary.path
-    end
+    dict_path = dictionary || Dictionary.path if with_checker
 
     if ranges
       _split_sentences_with_ranges(text, limit, dict_path).map do |(start, finish, sentence)|
@@ -244,12 +210,8 @@ module Kabosu
   #   Kabosu.tokenize("東京都に住んでいる", tokenizer: tok)
   #
   def self.tokenize(text, tokenizer:)
-    unless text.is_a?(String)
-      raise ArgumentError, "text must be a String"
-    end
-    unless tokenizer.is_a?(Tokenizer)
-      raise ArgumentError, "tokenizer must be a Kabosu::Tokenizer"
-    end
+    raise ArgumentError, "text must be a String" unless text.is_a?(String)
+    raise ArgumentError, "tokenizer must be a Kabosu::Tokenizer" unless tokenizer.is_a?(Tokenizer)
 
     batch = tokenizer.__send__(:_tokenize, text)
     cost = batch.respond_to?(:internal_cost) ? batch.internal_cost : nil

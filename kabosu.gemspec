@@ -10,6 +10,7 @@ Gem::Specification.new do |spec|
   spec.homepage = "https://github.com/davafons/kabosu"
   spec.license = "Apache-2.0"
   spec.required_ruby_version = ">= 3.1"
+  spec.metadata["rubygems_mfa_required"] = "true"
 
   spec.files = Dir[
     "lib/**/*.{rb,rake}",
@@ -25,8 +26,9 @@ Gem::Specification.new do |spec|
 
   spec.add_dependency "rb_sys", "~> 0.9"
   spec.add_dependency "rubyzip", "~> 2.3"
-  spec.add_development_dependency "rake", "~> 13.0"
-  spec.add_development_dependency "rake-compiler", "~> 1.2"
   spec.add_development_dependency "benchmark"
   spec.add_development_dependency "minitest", "~> 5.0"
+  spec.add_development_dependency "rake", "~> 13.0"
+  spec.add_development_dependency "rake-compiler", "~> 1.2"
+  spec.add_development_dependency "rubocop", "~> 1.0"
 end

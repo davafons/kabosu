@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+
+# Run the full suite locally, then stamp the commit green on GitHub.
+# A sign-off asserts the current working set is perfect: a clean tree, a fresh
+# build, and a passing test suite (which includes the conformance comparison
+# against raw sudachi.rs via the committed fixtures).
+set -e
+cd "$(dirname "$0")/.."
+
+# Sign off requires a clean repository — you sign off on committed code, not WIP.
+if [[ -n $(git status --porcelain) ]]; then
+  echo "Can't sign off on a dirty repository!"
+  git status --short
+  exit 1
+fi
+
+SHA=$(git rev-parse HEAD)
+WHO=$(git config user.name)
+
+run() { echo -e "\n\033[34m▶ $1\033[0m"; eval "$1"; }
+
+run "bin/lint"
+run "bundle exec rake compile"
+run "bundle exec rake test"
+
+gh api --method POST --silent \
+  "/repos/{owner}/{repo}/statuses/$SHA" \
+  -f context=signoff -f state=success -f "description=Signed off by $WHO"
+
+echo -e "\n\033[32m✓ Signed off on $SHA as $WHO\033[0m"

@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  bin/lint [--fix] [step...]
+  bin/lint --help
+
+Steps:
+  ruby, rubocop      Lint Ruby with RuboCop.
+  format, fmt        Check Rust formatting with rustfmt.
+  clippy             Lint Rust with Clippy (warnings are errors).
+  shell, shellcheck  Lint shell scripts with shellcheck.
+
+With no steps, runs every linter. Pass --fix to autocorrect where the tool
+supports it (RuboCop and rustfmt); clippy and shellcheck still run as checks.
+USAGE
+}
+
+# Every Rust crate in the repo: the shipped extension plus the dev/test crates.
+RUST_MANIFESTS=(
+  ext/kabosu/Cargo.toml
+  test/conformance/reference/Cargo.toml
+  bench/rust_bench/Cargo.toml
+)
+
+# Shell scripts to check.
+SHELL_SCRIPTS=(
+  bin/lint
+  bin/signoff
+  test/parity/setup.sh
+)
+
+fix=false
+if [[ "${1:-}" == "--fix" ]]; then
+  fix=true
+  shift
+fi
+
+case "${1:-}" in
+  --help | -h | help)
+    usage
+    exit
+    ;;
+esac
+
+run_ruby() {
+  if [[ "$fix" == true ]]; then
+    echo "== Fixing Ruby (RuboCop) =="
+    bundle exec rubocop -A
+  else
+    echo "== Linting Ruby (RuboCop) =="
+    bundle exec rubocop
+  fi
+}
+
+run_format() {
+  for manifest in "${RUST_MANIFESTS[@]}"; do
+    if [[ "$fix" == true ]]; then
+      echo "== Formatting Rust ($manifest) =="
+      cargo fmt --manifest-path "$manifest"
+    else
+      echo "== Checking Rust format ($manifest) =="
+      cargo fmt --check --manifest-path "$manifest"
+    fi
+  done
+}
+
+run_clippy() {
+  for manifest in "${RUST_MANIFESTS[@]}"; do
+    echo "== Linting Rust ($manifest) =="
+    cargo clippy --manifest-path "$manifest" --release --all-targets -- -D warnings
+  done
+}
+
+run_shell() {
+  echo "== Linting shell scripts =="
+  shellcheck "${SHELL_SCRIPTS[@]}"
+}
+
+run_step() {
+  case "$1" in
+    ruby | rubocop) run_ruby ;;
+    format | fmt | rustfmt) run_format ;;
+    clippy) run_clippy ;;
+    shell | shellcheck) run_shell ;;
+    *)
+      echo "Unknown lint step: $1" >&2
+      echo "" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+}
+
+if (($# == 0)); then
+  steps=(ruby format clippy shell)
+else
+  steps=("$@")
+fi
+
+first=true
+for step in "${steps[@]}"; do
+  if [[ "$first" == true ]]; then
+    first=false
+  else
+    echo ""
+  fi
+  run_step "$step"
+done
