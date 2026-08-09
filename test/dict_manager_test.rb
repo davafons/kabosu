@@ -225,4 +225,73 @@ class DictManagerTest < Minitest::Test
   def test_install_if_missing_rejects_invalid_edition
     assert_raises(ArgumentError) { @manager.install_if_missing("xl") }
   end
+
+  # ── Release asset discovery ─ ──
+
+  # The legacy zip is always present as a candidate. When the GitHub release
+  # API is unreachable or returns no wheel assets, the wheel candidate is
+  # omitted, leaving a single fallback path so an offline / 404 caller still
+  # gets a meaningful failure.
+  def test_pick_release_sources_includes_legacy_zip_when_api_missing
+    @manager.define_singleton_method(:fetch_release) { |_v| nil }
+    sources = @manager.send(:pick_release_sources, "20260428", "full")
+    assert_equal 1, sources.length
+    assert_equal :zip, sources.first[:format]
+    assert_match(%r{sudachi-dictionary-20260428-full\.zip\z}, sources.first[:url])
+  end
+
+  # When the API exposes only wheel assets (v20260723+), the wheel becomes
+  # the second candidate alongside the (404'ing) legacy zip.
+  def test_pick_release_sources_adds_wheel_when_only_wheel_asset_exists
+    payload = {
+      "tag_name" => "v20260723",
+      "assets" => [
+        { "name" => "sudachidict_full-20260723-py3-none-any.whl",
+          "browser_download_url" => "https://github.com/WorksApplications/SudachiDict/releases/download/v20260723/sudachidict_full-20260723-py3-none-any.whl" },
+        { "name" => "sudachidict_full-20260723.tar.gz",
+          "browser_download_url" => "https://github.com/WorksApplications/SudachiDict/releases/download/v20260723/sudachidict_full-20260723.tar.gz" }
+      ]
+    }.to_json
+
+    @manager.define_singleton_method(:fetch_release) { |_v| JSON.parse(payload) }
+
+    sources = @manager.send(:pick_release_sources, "20260723", "full")
+    formats = sources.map { _1[:format] }
+    assert_equal %i[zip wheel], formats
+    assert_match(%r{sudachidict_full-20260723-py3-none-any\.whl\z}, sources.last[:url])
+  end
+
+  # `extract` lands a wheel's `system.dic` at `dest_dir/system_{edition}.dic`
+  # so `find`/`installed` keep working without a separate code path.
+  def test_extract_renames_wheel_system_dic
+    Dir.mktmpdir do |wheel|
+      wheel_zip = File.join(wheel, "test.whl")
+      Zip::File.open(wheel_zip, create: true) do |z|
+        z.get_output_stream("sudachidict_full/resources/system.dic") { |io| io.write("fake dic bytes") }
+      end
+
+      Dir.mktmpdir do |dest|
+        @manager.send(:extract, wheel_zip, dest, edition: "full")
+        assert File.exist?(File.join(dest, "system_full.dic"))
+        refute File.exist?(File.join(dest, "system.dic"))
+        refute File.exist?(File.join(dest, "sudachidict_full", "resources", "system.dic"))
+      end
+    end
+  end
+
+  # When `edition:` is nil (legacy zips with edition in the file name), extract
+  # passes entries through unchanged.
+  def test_extract_legacy_zip_passes_entries_through
+    Dir.mktmpdir do |zip|
+      zip_path = File.join(zip, "test.zip")
+      Zip::File.open(zip_path, create: true) do |z|
+        z.get_output_stream("system_full.dic") { |io| io.write("fake dic bytes") }
+      end
+
+      Dir.mktmpdir do |dest|
+        @manager.send(:extract, zip_path, dest)
+        assert File.exist?(File.join(dest, "system_full.dic"))
+      end
+    end
+  end
 end

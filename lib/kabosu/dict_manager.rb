@@ -46,13 +46,32 @@ module Kabosu
         return dic_path
       end
 
-      url = release_asset_url(version, edition)
-      zip_path = File.join(@dir, "sudachi-dictionary-#{version}-#{edition}.zip")
-
       FileUtils.mkdir_p(@dir)
-      download(url, zip_path)
-      extract(zip_path, @dir)
-      FileUtils.rm_f(zip_path)
+
+      # SudachiDict switched to Python-only release assets in v20260723:
+      # https://github.com/WorksApplications/SudachiDict/releases/tag/v20260723
+      # The legacy `sudachi-dictionary-{version}-{edition}.zip` is gone; the
+      # new releases ship `sudachidict_{edition}-{version}-py3-none-any.whl`
+      # (a PEP 427 wheel). Pick whichever exists, preferring the legacy zip
+      # when both are present (older releases kept both formats in flight).
+      sources = pick_release_sources(version, edition)
+      raise DownloadError, "No downloadable assets for #{version}/#{edition}" if sources.empty?
+
+      sources.each do |source|
+        begin
+          download(source.fetch(:url), source.fetch(:archive_path))
+          extract(source.fetch(:archive_path), dest_dir, edition: edition)
+          FileUtils.rm_f(source.fetch(:archive_path))
+          break
+        rescue DownloadError => e
+          FileUtils.rm_f(source.fetch(:archive_path)) if File.exist?(source.fetch(:archive_path))
+          # Try the next candidate (e.g. wheel if the zip 404s). If this was
+          # the last one, surface the original error.
+          raise if sources.last.equal?(source)
+
+          warn "  falling back: #{e.message}"
+        end
+      end
 
       raise DownloadError, "Expected #{dic_path} after extraction, but file not found" unless File.exist?(dic_path)
 
@@ -181,6 +200,51 @@ module Kabosu
       edition
     end
 
+    # Look up the GitHub release for `version` and return an ordered list of
+    # candidate download sources. The legacy `sudachi-dictionary-{version}-{edition}.zip`
+    # is preferred when present (matches the layout every other consumer
+    # assumes); otherwise we fall back to the SudachiDict Python wheel,
+    # which is what v20260723+ ship and which carries `system.dic` inside
+    # `sudachidict_{edition}/resources/`.
+    #
+    # On GitHub API failure we degrade to the legacy zip URL alone: an old
+    # release that 404s on the zip *also* 404s on the wheel, so falling back
+    # to "guessed" candidates costs nothing and keeps the code path simple
+    # for offline / no-network callers.
+    def pick_release_sources(version, edition)
+      candidates = []
+      zip = release_asset_url(version, edition)
+      candidates << { url: zip, archive_path: File.join(@dir, "sudachi-dictionary-#{version}-#{edition}.zip"), format: :zip }
+
+      begin
+        release = fetch_release(version)
+        if release
+          wheel_name = "sudachidict_#{edition}-#{version}-py3-none-any.whl"
+          wheel = release["assets"].to_a.find { |a| a["name"] == wheel_name }
+          if wheel && wheel["browser_download_url"]
+            candidates << {
+              url: wheel.fetch("browser_download_url"),
+              archive_path: File.join(@dir, wheel_name),
+              format: :wheel
+            }
+          end
+        end
+      rescue DownloadError
+        # API failure is fine: keep the legacy-zip candidate; the user will
+        # see a clean 404 if neither asset actually exists on disk.
+      end
+
+      candidates
+    end
+
+    def fetch_release(version)
+      uri = URI("#{GITHUB_API}/repos/#{GITHUB_REPO}/releases/tags/v#{version}")
+      response = http_get(uri, headers: { "Accept" => "application/json" })
+      return nil unless response.is_a?(Net::HTTPSuccess)
+
+      JSON.parse(response.body)
+    end
+
     def release_asset_url(version, edition)
       "https://github.com/#{GITHUB_REPO}/releases/download/v#{version}/sudachi-dictionary-#{version}-#{edition}.zip"
     end
@@ -249,11 +313,22 @@ module Kabosu
       end
     end
 
-    def extract(zip_path, dest_dir)
+    def extract(zip_path, dest_dir, edition: nil)
       warn "Extracting..."
       Zip::File.open(zip_path) do |archive|
         archive.each do |entry|
-          target = File.join(dest_dir, entry.name)
+          # Wheels (`sudachidict_{edition}/resources/system.dic`) carry the
+          # edition in the top-level directory; legacy zips name the file
+          # `system_{edition}.dic` already. When the entry is a `system.dic`
+          # inside a wheel and `edition:` was passed, land it at
+          # `dest_dir/system_{edition}.dic` so `find`/`installed` keep working
+          # without a separate code path.
+          target_name = entry.name
+          if edition && File.basename(entry.name) == "system.dic"
+            target_name = "system_#{edition}.dic"
+          end
+
+          target = File.join(dest_dir, target_name)
           # Guard against zip-slip — refuse entries that escape dest_dir.
           unless File.expand_path(target).start_with?(File.expand_path(dest_dir) + File::SEPARATOR)
             raise DownloadError, "Refusing to extract entry outside dest_dir: #{entry.name}"
