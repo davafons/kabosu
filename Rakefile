@@ -102,3 +102,28 @@ namespace :parity do
 end
 
 task default: %i[compile test]
+
+# ── Allocation ratchet ────────────────────────────────────────────────────────
+# The assertions live in test/allocation_test.rb and run as part of `rake test`.
+# These two tasks are the human-facing half: look at the numbers, and record them.
+namespace :alloc do
+  desc "Record the allocation baselines for the installed dictionary"
+  task record: :compile do
+    ruby "-Ilib", "test/allocation/record.rb"
+  end
+
+  desc "Show what the allocation workloads cost right now, without recording"
+  task report: :compile do
+    ruby "-Ilib", "-e", <<~RUBY
+      require "kabosu"; require_relative "test/allocation/measure"
+      require_relative "test/allocation/workloads"
+      dict = Kabosu::Dictionary.new(system_dict: Kabosu::Dictionary.path)
+      toks = Allocation::Workloads.tokenizers(dict)
+      Allocation::Workloads.all.each do |name, body|
+        objects, stable = Allocation.stable { body.call(toks) }
+        puts format("%-16s %9d objects  %7.1f per line%s", name, objects,
+                    objects.to_f / Allocation::Workloads.units, stable ? "" : "  UNSTABLE")
+      end
+    RUBY
+  end
+end

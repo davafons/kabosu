@@ -1,0 +1,15 @@
+# Recorded by `rake alloc:record`. One block per dictionary edition: `full`
+# segments differently from `core`, so their numbers are never compared and a
+# missing block is a skip rather than a failure.
+#
+# Every number is objects allocated with the GC held off, and they are EXACT —
+# a re-run on the same machine reproduces them to the object, which the suite
+# re-checks each run rather than assuming. Wall clock is deliberately absent
+# and must never gate anything.
+#
+# A number moving in EITHER direction stops the build. Up is a regression; down
+# is an improvement nobody has locked in yet, so re-record to hold the new floor.
+full:
+  tokenize_only: 75
+  realistic: 666
+  group_surfaces: 385
