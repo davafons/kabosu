@@ -1,0 +1,72 @@
+name: CI
+
+# Nothing ran on push before this existed: `release.yml` cross-builds and pushes
+# to RubyGems on a tag, and `edge.yml` publishes a dev gem on every push to main,
+# and NEITHER compiles the extension against the test suite first. A green tag was
+# only ever evidence that six cross-builds linked, not that the gem worked.
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test (Ruby ${{ matrix.ruby }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The oldest the gemspec claims and the newest it ships for: the two ends
+        # are where a magnus or rb-sys incompatibility actually shows up.
+        ruby: [ "3.1", "4.0" ]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oxidize-rb/actions/setup-ruby-and-rust@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+          bundler-cache: true
+          cargo-cache: true
+
+      # Pinned to what test/conformance/fixtures/meta.json records, so the
+      # conformance suite compares against the dictionary its fixtures were
+      # generated from rather than whatever is newest. A newer release segments
+      # differently and would fail for a reason that is not a regression.
+      - name: Read the pinned dictionary
+        id: dict
+        run: |
+          ruby -rjson -e 'm = JSON.parse(File.read("test/conformance/fixtures/meta.json")); \
+            puts "edition=#{m.fetch("dict_edition")}"; puts "version=#{m.fetch("dict_version")}"' >> "$GITHUB_OUTPUT"
+
+      - name: Cache the dictionary
+        uses: actions/cache@v4
+        with:
+          path: ~/.kabosu/dict
+          key: sudachi-${{ steps.dict.outputs.edition }}-${{ steps.dict.outputs.version }}
+
+      - name: Install the dictionary
+        run: bundle exec rake kabosu:install:${{ steps.dict.outputs.edition }}
+        env:
+          VERSION: ${{ steps.dict.outputs.version }}
+
+      - name: Compile
+        run: bundle exec rake compile
+
+      # Includes the allocation ratchet (test/allocation_test.rb). Its Tier 1
+      # invariant — a repeat ask for a cached field allocates nothing — holds on
+      # any dictionary and gates here. Its Tier 2 recorded numbers are keyed by
+      # edition AND version and will SKIP unless someone has recorded a baseline
+      # for the pinned one; that is deliberate, because numbers from a different
+      # dictionary are not comparable.
+      - name: Test
+        run: bundle exec rake test
+
+      - name: Show the allocation numbers
+        # Always, green runs included: a slow slide is visible in the log long
+        # before it would trip a ratchet.
+        if: always()
+        run: bundle exec rake alloc:report

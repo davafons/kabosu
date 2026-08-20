@@ -9,13 +9,13 @@ require_relative "workloads"
 
 dict = Kabosu::Dictionary.new(system_dict: Kabosu::Dictionary.path)
 toks = Allocation::Workloads.tokenizers(dict)
-edition = Kabosu::Dictionary.path.to_s[/small|core|full/] || "unknown"
+edition = Allocation.dictionary_key
 path = File.expand_path("baselines.yml", __dir__)
 
 recorded = File.exist?(path) ? YAML.load_file(path) : {}
 recorded[edition] ||= {}
 
-puts "dictionary edition: #{edition}   corpus lines: #{Allocation::Workloads.units}"
+puts "dictionary: #{edition}   corpus lines: #{Allocation::Workloads.units}"
 Allocation::Workloads.all.each do |name, body|
   objects, stable = Allocation.stable { body.call(toks) }
   abort "#{name} would not stabilise (#{objects}); refusing to record a number nobody can reproduce" unless stable

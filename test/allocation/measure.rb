@@ -17,6 +17,16 @@ module Allocation
     GC.enable
   end
 
+  # Which dictionary the numbers belong to. BOTH halves matter: `full` segments
+  # differently from `core`, and so does the same edition at a different release,
+  # so 20260116 and 20260428 are not comparable either. A key nobody recorded is a
+  # skip, never a failure.
+  def dictionary_key(path = Kabosu::Dictionary.path.to_s)
+    edition = path[/small|core|full/] || "unknown"
+    version = path[/sudachi-dictionary-(\d+)/, 1] || "unknown"
+    "#{edition}-#{version}"
+  end
+
   # Run it until it repeats itself. The first passes warm process-wide state (the
   # POS cache, inline caches, fstring dedup), so a reading only counts once the
   # same work twice in a row costs the same. `stable: false` means the environment

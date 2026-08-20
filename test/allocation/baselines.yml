@@ -9,7 +9,7 @@
 #
 # A number moving in EITHER direction stops the build. Up is a regression; down
 # is an improvement nobody has locked in yet, so re-record to hold the new floor.
-full:
+full-20260428:
   tokenize_only: 75
   realistic: 666
   group_surfaces: 385

@@ -69,9 +69,9 @@ class AllocationTest < Minitest::Test
     skip "no baselines recorded yet: run `rake alloc:record`" unless File.exist?(BASELINES)
 
     recorded = YAML.load_file(BASELINES)
-    edition = Kabosu::Dictionary.path.to_s[/small|core|full/] || "unknown"
-    expected = recorded[edition]
-    skip "no baseline for the #{edition} dictionary" if expected.nil?
+    key = Allocation.dictionary_key
+    expected = recorded[key]
+    skip "no baseline recorded for the #{key} dictionary" if expected.nil?
 
     Allocation::Workloads.all.each do |name, body|
       want = expected[name]
