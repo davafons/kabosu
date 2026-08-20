@@ -20,6 +20,70 @@ class DictManagerTest < Minitest::Test
     path
   end
 
+  # Builds a zip shaped like a real release asset, without the network.
+  #   legacy: sudachi-dictionary-{version}/system_{edition}.dic  (pre-v20260723)
+  #   wheel:  sudachidict_{edition}/resources/system.dic          (v20260723+)
+  def stub_archive(path, entries)
+    Zip::File.open(path, create: true) do |zip|
+      entries.each { |name, body| zip.get_output_stream(name) { |io| io.write(body) } }
+    end
+    path
+  end
+
+  # ── extract: both release layouts land where `find` looks ──
+
+  # Every install of a pre-v20260723 release failed here, in two ways at once, and
+  # neither was caught because a machine that already has a dictionary never
+  # re-installs one:
+  #
+  #   1. A legacy zip nests its contents under its own
+  #      `sudachi-dictionary-{version}/` directory, and joining that to a dest_dir
+  #      that ALREADY ends in `sudachi-dictionary-{version}` produced
+  #      `.../sudachi-dictionary-X/sudachi-dictionary-X/system_core.dic`.
+  #   2. The archive's own directory entry was then recreated inside dest_dir,
+  #      so the tree looked half-right to anyone glancing at it while `find` and
+  #      `installed`, which look only one level down, saw nothing at all.
+  #
+  # (`Entry#extract(dest_path)` takes the destination path directly on the pinned
+  # rubyzip 2.x. rubyzip 3 moves to `extract(entry_path, destination_directory:)`,
+  # exposed here as `extract_v3` — if the pin ever moves, this is the call to
+  # revisit, and these tests are what will say so.)
+  def test_extract_flattens_a_legacy_zip_into_the_version_directory
+    archive = stub_archive(File.join(@tmpdir, "legacy.zip"),
+                           "sudachi-dictionary-20260116/system_core.dic" => "DIC",
+                           "sudachi-dictionary-20260116/LEGAL" => "legal")
+    dest = File.join(@tmpdir, "sudachi-dictionary-20260116")
+
+    @manager.send(:extract, archive, dest, edition: "core")
+
+    assert_equal "DIC", File.read(File.join(dest, "system_core.dic"))
+    assert_equal "legal", File.read(File.join(dest, "LEGAL"))
+    refute_path_exists File.join(dest, "sudachi-dictionary-20260116"),
+      "the archive's own directory was recreated inside dest_dir"
+  end
+
+  def test_extract_renames_a_wheels_system_dic_to_carry_the_edition
+    archive = stub_archive(File.join(@tmpdir, "wheel.whl"),
+                           "sudachidict_core/resources/system.dic" => "DIC")
+    dest = File.join(@tmpdir, "sudachi-dictionary-20260723")
+
+    @manager.send(:extract, archive, dest, edition: "core")
+
+    assert_equal "DIC", File.read(File.join(dest, "system_core.dic"))
+  end
+
+  # The path `install` then checks for, so the two cannot drift apart.
+  def test_extract_lands_where_installed_looks
+    archive = stub_archive(File.join(@tmpdir, "legacy.zip"),
+                           "sudachi-dictionary-20260116/system_full.dic" => "DIC")
+
+    @manager.send(:extract, archive, File.join(@tmpdir, "sudachi-dictionary-20260116"), edition: "full")
+
+    assert_equal [ { version: "20260116", edition: "full",
+                     path: File.join(@tmpdir, "sudachi-dictionary-20260116", "system_full.dic") } ],
+                 @manager.installed
+  end
+
   # ── installed ──
 
   def test_installed_empty_dir

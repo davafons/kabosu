@@ -317,16 +317,25 @@ module Kabosu
       warn "Extracting..."
       Zip::File.open(zip_path) do |archive|
         archive.each do |entry|
-          # Wheels (`sudachidict_{edition}/resources/system.dic`) carry the
-          # edition in the top-level directory; legacy zips name the file
-          # `system_{edition}.dic` already. When the entry is a `system.dic`
-          # inside a wheel and `edition:` was passed, land it at
-          # `dest_dir/system_{edition}.dic` so `find`/`installed` keep working
-          # without a separate code path.
-          target_name = entry.name
-          if edition && File.basename(entry.name) == "system.dic"
-            target_name = "system_#{edition}.dic"
-          end
+          # Both layouts are flattened into dest_dir, which is already
+          # `sudachi-dictionary-{version}`.
+          #
+          # Legacy zips nest their contents under a `sudachi-dictionary-{version}/`
+          # directory of their own, so joining the entry name to dest_dir landed
+          # the dictionary at `sudachi-dictionary-{version}/sudachi-dictionary-{version}/system_core.dic`
+          # and every install of a pre-v20260723 release failed with "expected
+          # ... after extraction, but file not found". It went unnoticed because a
+          # machine that already had a dictionary never re-installs one.
+          #
+          # Wheels nest differently again (`sudachidict_{edition}/resources/system.dic`)
+          # and name the file `system.dic`, so that one is renamed to carry the
+          # edition. Taking the basename handles both, and there is nothing in
+          # these archives whose structure is worth keeping: a `.dic`, a LEGAL and
+          # a licence.
+          target_name = File.basename(entry.name)
+          target_name = "system_#{edition}.dic" if edition && target_name == "system.dic"
+
+          next if entry.directory?
 
           target = File.join(dest_dir, target_name)
           # Guard against zip-slip — refuse entries that escape dest_dir.
@@ -334,7 +343,7 @@ module Kabosu
             raise DownloadError, "Refusing to extract entry outside dest_dir: #{entry.name}"
           end
 
-          FileUtils.mkdir_p(File.dirname(target))
+          FileUtils.mkdir_p(dest_dir)
           entry.extract(target) { true } # overwrite existing
         end
       end
