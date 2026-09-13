@@ -32,14 +32,14 @@ module Allocation
   # same work twice in a row costs the same. `stable: false` means the environment
   # cannot be measured — a skip locally, a failure in CI, and never a number
   # anybody acts on.
-  def stable(attempts: 6)
+  def stable(attempts: 6, &block)
     last = nil
     attempts.times do
-      current = objects { yield }
-      return [ current, true ] if current == last
+      current = objects(&block)
+      return [current, true] if current == last
 
       last = current
     end
-    [ last, false ]
+    [last, false]
   end
 end

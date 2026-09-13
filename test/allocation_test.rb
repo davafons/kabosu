@@ -36,8 +36,12 @@ class AllocationTest < Minitest::Test
 
   def test_a_repeat_ask_for_a_cached_field_allocates_nothing
     morphemes = @toks[:c].tokenize(Allocation::Workloads::CORPUS.first).to_a
-    morphemes.each { |m| m.surface; m.dictionary_form; m.part_of_speech } # fill
-
+    # fill
+    morphemes.each do |m|
+      m.surface
+      m.dictionary_form
+      m.part_of_speech
+    end
     # Through `stable`, not a bare `objects`: the FIRST measurement of any new
     # call site pays for warming it (a `public_send` site measured 3 objects once
     # and 0 every time after), and that warmup is not what this asserts.
@@ -46,7 +50,7 @@ class AllocationTest < Minitest::Test
 
       assert stable, "#{field} would not stabilise (#{allocated} objects): the environment cannot be measured"
       assert_equal 0, allocated,
-        "#{field} allocated #{allocated} objects on a repeat ask: its cache is not being hit"
+                   "#{field} allocated #{allocated} objects on a repeat ask: its cache is not being hit"
     end
   end
 
@@ -60,7 +64,7 @@ class AllocationTest < Minitest::Test
     allocated, = Allocation.stable { morphemes.each(&:reading_form) }
 
     assert_operator allocated, :>, 0,
-      "reading_form now allocates nothing, so it has been cached: confirm the memory trade was measured"
+                    "reading_form now allocates nothing, so it has been cached: confirm the memory trade was measured"
   end
 
   # ── Tier 2: the recorded numbers ──────────────────────────────────────
@@ -83,8 +87,9 @@ class AllocationTest < Minitest::Test
 
       # BOTH directions stop the build. Up is a regression; down is an
       # improvement nobody has locked in yet, so re-record and hold the new floor.
+      direction = got > want ? "REGRESSION" : "improvement, re-record with `rake alloc:record`"
       assert_equal want, got,
-        "#{name}: allocations moved #{want} -> #{got} (#{got > want ? 'REGRESSION' : 'improvement, re-record with `rake alloc:record`'})"
+                   "#{name}: allocations moved #{want} -> #{got} (#{direction})"
     end
   end
 end

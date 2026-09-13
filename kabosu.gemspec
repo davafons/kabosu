@@ -25,7 +25,7 @@ Gem::Specification.new do |spec|
   spec.extensions = ["ext/kabosu/extconf.rb"]
 
   spec.add_dependency "rb_sys", "~> 0.9"
-  spec.add_dependency "rubyzip", "~> 2.3"
+  spec.add_dependency "rubyzip", "~> 3.4"
   spec.add_development_dependency "benchmark"
   spec.add_development_dependency "minitest", "~> 5.0"
   spec.add_development_dependency "rake", "~> 13.0"

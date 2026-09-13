@@ -23,7 +23,7 @@ class MorphemeSurfaceCacheTest < Minitest::Test
     morpheme = @tokenizer.tokenize(SENTENCE).first
 
     assert_same morpheme.surface, morpheme.surface,
-      "each call rebuilt the String, so the cache is not being used"
+                "each call rebuilt the String, so the cache is not being used"
   end
 
   def test_the_cached_surface_is_frozen_so_the_mutable_copy_idiom_still_works

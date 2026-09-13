@@ -370,7 +370,11 @@ impl RbMorpheme {
     // morpheme on a real workload, so five of every six Strings this built were
     // a copy of one it had already built.
     pub(crate) fn dictionary_form(ruby: &Ruby, rb_self: &Self) -> RString {
-        frozen_string(ruby, &rb_self.dictionary_form_cache, &rb_self.data.dictionary_form)
+        frozen_string(
+            ruby,
+            &rb_self.dictionary_form_cache,
+            &rb_self.data.dictionary_form,
+        )
     }
 
     pub(crate) fn normalized_form(&self) -> &str {

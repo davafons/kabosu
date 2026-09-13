@@ -22,8 +22,9 @@ Allocation::Workloads.all.each do |name, body|
 
   was = recorded[edition][name]
   recorded[edition][name] = objects
-  delta = was ? format(" (was %d, %+d)", was, objects - was) : " (new)"
-  puts format("  %-16s %9d objects  %7.1f per line%s", name, objects, objects.to_f / Allocation::Workloads.units, delta)
+  delta = was ? format(" (was %<was>d, %<change>+d)", was: was, change: objects - was) : " (new)"
+  puts format("  %<name>-16s %<objects>9d objects  %<per_line>7.1f per line%<delta>s",
+              name: name, objects: objects, per_line: objects.to_f / Allocation::Workloads.units, delta: delta)
 end
 
 File.write(path, <<~HEADER + recorded.to_yaml.sub(/\A---\n/, ""))

@@ -58,19 +58,17 @@ module Kabosu
       raise DownloadError, "No downloadable assets for #{version}/#{edition}" if sources.empty?
 
       sources.each do |source|
-        begin
-          download(source.fetch(:url), source.fetch(:archive_path))
-          extract(source.fetch(:archive_path), dest_dir, edition: edition)
-          FileUtils.rm_f(source.fetch(:archive_path))
-          break
-        rescue DownloadError => e
-          FileUtils.rm_f(source.fetch(:archive_path)) if File.exist?(source.fetch(:archive_path))
-          # Try the next candidate (e.g. wheel if the zip 404s). If this was
-          # the last one, surface the original error.
-          raise if sources.last.equal?(source)
+        download(source.fetch(:url), source.fetch(:archive_path))
+        extract(source.fetch(:archive_path), dest_dir, edition: edition)
+        FileUtils.rm_f(source.fetch(:archive_path))
+        break
+      rescue DownloadError => e
+        FileUtils.rm_f(source.fetch(:archive_path))
+        # Try the next candidate (e.g. wheel if the zip 404s). If this was
+        # the last one, surface the original error.
+        raise if sources.last.equal?(source)
 
-          warn "  falling back: #{e.message}"
-        end
+        warn "  falling back: #{e.message}"
       end
 
       raise DownloadError, "Expected #{dic_path} after extraction, but file not found" unless File.exist?(dic_path)
@@ -214,7 +212,8 @@ module Kabosu
     def pick_release_sources(version, edition)
       candidates = []
       zip = release_asset_url(version, edition)
-      candidates << { url: zip, archive_path: File.join(@dir, "sudachi-dictionary-#{version}-#{edition}.zip"), format: :zip }
+      candidates << { url: zip, archive_path: File.join(@dir, "sudachi-dictionary-#{version}-#{edition}.zip"),
+                      format: :zip }
 
       begin
         release = fetch_release(version)
@@ -337,14 +336,8 @@ module Kabosu
 
           next if entry.directory?
 
-          target = File.join(dest_dir, target_name)
-          # Guard against zip-slip — refuse entries that escape dest_dir.
-          unless File.expand_path(target).start_with?(File.expand_path(dest_dir) + File::SEPARATOR)
-            raise DownloadError, "Refusing to extract entry outside dest_dir: #{entry.name}"
-          end
-
           FileUtils.mkdir_p(dest_dir)
-          entry.extract(target) { true } # overwrite existing
+          entry.extract(target_name, destination_directory: dest_dir) { true }
         end
       end
     rescue Zip::Error => e

@@ -44,10 +44,6 @@ class DictManagerTest < Minitest::Test
   #      so the tree looked half-right to anyone glancing at it while `find` and
   #      `installed`, which look only one level down, saw nothing at all.
   #
-  # (`Entry#extract(dest_path)` takes the destination path directly on the pinned
-  # rubyzip 2.x. rubyzip 3 moves to `extract(entry_path, destination_directory:)`,
-  # exposed here as `extract_v3` — if the pin ever moves, this is the call to
-  # revisit, and these tests are what will say so.)
   def test_extract_flattens_a_legacy_zip_into_the_version_directory
     archive = stub_archive(File.join(@tmpdir, "legacy.zip"),
                            "sudachi-dictionary-20260116/system_core.dic" => "DIC",
@@ -59,7 +55,7 @@ class DictManagerTest < Minitest::Test
     assert_equal "DIC", File.read(File.join(dest, "system_core.dic"))
     assert_equal "legal", File.read(File.join(dest, "LEGAL"))
     refute_path_exists File.join(dest, "sudachi-dictionary-20260116"),
-      "the archive's own directory was recreated inside dest_dir"
+                       "the archive's own directory was recreated inside dest_dir"
   end
 
   def test_extract_renames_a_wheels_system_dic_to_carry_the_edition
@@ -72,6 +68,16 @@ class DictManagerTest < Minitest::Test
     assert_equal "DIC", File.read(File.join(dest, "system_core.dic"))
   end
 
+  def test_extract_cannot_write_outside_the_version_directory
+    archive = stub_archive(File.join(@tmpdir, "traversal.zip"), "../escaped.txt" => "escaped")
+    dest = File.join(@tmpdir, "sudachi-dictionary-20260723")
+
+    @manager.send(:extract, archive, dest)
+
+    refute_path_exists File.join(@tmpdir, "escaped.txt")
+    assert_equal "escaped", File.read(File.join(dest, "escaped.txt"))
+  end
+
   # The path `install` then checks for, so the two cannot drift apart.
   def test_extract_lands_where_installed_looks
     archive = stub_archive(File.join(@tmpdir, "legacy.zip"),
@@ -79,8 +85,8 @@ class DictManagerTest < Minitest::Test
 
     @manager.send(:extract, archive, File.join(@tmpdir, "sudachi-dictionary-20260116"), edition: "full")
 
-    assert_equal [ { version: "20260116", edition: "full",
-                     path: File.join(@tmpdir, "sudachi-dictionary-20260116", "system_full.dic") } ],
+    assert_equal [{ version: "20260116", edition: "full",
+                    path: File.join(@tmpdir, "sudachi-dictionary-20260116", "system_full.dic") }],
                  @manager.installed
   end
 
@@ -301,19 +307,20 @@ class DictManagerTest < Minitest::Test
     sources = @manager.send(:pick_release_sources, "20260428", "full")
     assert_equal 1, sources.length
     assert_equal :zip, sources.first[:format]
-    assert_match(%r{sudachi-dictionary-20260428-full\.zip\z}, sources.first[:url])
+    assert_match(/sudachi-dictionary-20260428-full\.zip\z/, sources.first[:url])
   end
 
   # When the API exposes only wheel assets (v20260723+), the wheel becomes
   # the second candidate alongside the (404'ing) legacy zip.
   def test_pick_release_sources_adds_wheel_when_only_wheel_asset_exists
+    release_url = "https://github.com/WorksApplications/SudachiDict/releases/download/v20260723"
     payload = {
       "tag_name" => "v20260723",
       "assets" => [
         { "name" => "sudachidict_full-20260723-py3-none-any.whl",
-          "browser_download_url" => "https://github.com/WorksApplications/SudachiDict/releases/download/v20260723/sudachidict_full-20260723-py3-none-any.whl" },
+          "browser_download_url" => "#{release_url}/sudachidict_full-20260723-py3-none-any.whl" },
         { "name" => "sudachidict_full-20260723.tar.gz",
-          "browser_download_url" => "https://github.com/WorksApplications/SudachiDict/releases/download/v20260723/sudachidict_full-20260723.tar.gz" }
+          "browser_download_url" => "#{release_url}/sudachidict_full-20260723.tar.gz" }
       ]
     }.to_json
 
@@ -322,7 +329,7 @@ class DictManagerTest < Minitest::Test
     sources = @manager.send(:pick_release_sources, "20260723", "full")
     formats = sources.map { _1[:format] }
     assert_equal %i[zip wheel], formats
-    assert_match(%r{sudachidict_full-20260723-py3-none-any\.whl\z}, sources.last[:url])
+    assert_match(/sudachidict_full-20260723-py3-none-any\.whl\z/, sources.last[:url])
   end
 
   # `extract` lands a wheel's `system.dic` at `dest_dir/system_{edition}.dic`

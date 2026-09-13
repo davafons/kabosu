@@ -60,8 +60,10 @@ module Allocation
 
     def units = CORPUS.size
 
-    def all = { "tokenize_only" => method(:tokenize_only),
-                "realistic" => method(:realistic),
-                "group_surfaces" => method(:group_surfaces) }
+    def all
+      { "tokenize_only" => method(:tokenize_only),
+        "realistic" => method(:realistic),
+        "group_surfaces" => method(:group_surfaces) }
+    end
   end
 end
