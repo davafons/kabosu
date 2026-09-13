@@ -7,7 +7,7 @@ via PyO3), so this measures the binding layer, not the analyzer.
 `test/parity_test.rb` proves the claim mechanically: it runs the shared corpus
 through kabosu and through SudachiPy **pointed at the same dictionary, config,
 and resources**, and asserts identical values for every field both expose. As of
-sudachi.rs / SudachiPy **v0.6.11**, dictionary `20260116` (core): **all 5219
+sudachi.rs / SudachiPy **v0.7.0**, dictionary `20261015` (core): **all 3759
 field assertions across modes A/B/C pass — zero value divergences.**
 
 The bindings are therefore *output-identical*. What differs is API surface and
@@ -30,11 +30,11 @@ ergonomics.
 | **Start offset (chars)** | `begin()` | `begin_c` | ✅ verified (renamed) |
 | **End offset (chars)** | `end()` | `end_c` | ✅ verified (renamed) |
 | Split into sub-units | `split(mode)` | `split(mode:)` | ✅ equivalent |
-| Head word length | `get_word_info().head_word_length` | `head_word_length` | ✅ verified (non-OOV) |
-| Dictionary-form word id | `get_word_info().dictionary_form_word_id` | `dictionary_form_word_id` | ✅ verified (non-OOV) |
-| A-unit split ids | `get_word_info().a_unit_split` | `a_unit_split` | ✅ verified (non-OOV) |
-| B-unit split ids | `get_word_info().b_unit_split` | `b_unit_split` | ✅ verified (non-OOV) |
-| Word structure ids | `get_word_info().word_structure` | `word_structure` | ✅ verified (non-OOV) |
+| Head word length | — (removed in 0.7) | `head_word_length` | conformance suite only |
+| Dictionary-form word id | — (removed in 0.7) | `dictionary_form_word_id` | conformance suite only |
+| A-unit split ids | — (removed in 0.7) | `a_unit_split` | conformance suite only |
+| B-unit split ids | — (removed in 0.7) | `b_unit_split` | conformance suite only |
+| Word structure ids | — (removed in 0.7) | `word_structure` | conformance suite only |
 
 ### Differences
 
@@ -43,26 +43,33 @@ ergonomics.
 exposes **byte** offsets as `begin`/`end`. Code ported from SudachiPy that calls
 `begin()`/`end()` must use `begin_c`/`end_c` in kabosu, not `begin`/`end`.
 
-**WordInfo is flattened.** SudachiPy returns a separate `get_word_info()` object
-(and warns it is "raw"). kabosu lifts those fields directly onto the morpheme
-(`head_word_length`, `a_unit_split`, …), so no second call is needed.
+**WordInfo is flattened.** SudachiPy 0.7 removed `get_word_info()`, so it no
+longer exposes these fields at all. kabosu keeps them on the morpheme
+(`head_word_length`, `a_unit_split`, …); they are checked against raw sudachi.rs
+by `test/conformance_test.rb` instead of against SudachiPy.
 
 **kabosu-only accessors:** `begin`/`end` (byte offsets), `total_cost`,
 `system?`, `user?`.
 
 **SudachiPy-only accessors:** `raw_surface()` (surface before input-text-plugin
-rewriting), and the explicit `get_word_info()` object.
+rewriting).
 
 ## Dictionary / Tokenizer level
 
 | Concept | SudachiPy | kabosu |
 |---|---|---|
 | Build a dictionary | `Dictionary(config_path=, resource_dir=, dict=)` | `Kabosu::Dictionary.new(config:, system_dict:, user_dicts:)` |
-| Create a tokenizer | `dict.create(mode=SplitMode.C)` | `dict.create(mode: :c)` |
+| Create a tokenizer | `dict.tokenizer(mode=SplitMode.C)` | `dict.create(mode: :c)` |
 | Tokenize | `tokenizer.tokenize(text, mode)` — mode overridable per call | `tokenizer.tokenize(text)` — mode fixed at create time |
 | Split mode | `SplitMode.A/B/C` | `:a`/`:b`/`:c` (or `Kabosu::MODE_A/B/C`) |
 | POS matcher | `dict.pos_matcher(...)` | `Kabosu::PosMatcher` |
-| Prefix lookup | (not exposed) | `dict.lookup(text)` |
+| Lookup | `dict.lookup(text)` — exact matches | `dict.lookup(text)` — every prefix match |
+| Scan all entries | `dict.entries()`, `dict.lookup_all_entries(s)` | `dict.entries`, `dict.lookup_all_entries(s)` |
+| OOV morpheme | `dict.oov_morpheme(pos_id, surface, ...)` | `dict.oov_morpheme(pos_id, surface, reading:, ...)` |
+| Normalize text | `dict.text_normalizer().normalize(s)` | `dict.normalize(s)` |
+| Form morphemes | `m.dictionary_form_morpheme()`, `m.normalized_form_morpheme()` | same names |
+| User data | `m.user_data()` | `m.user_data` |
+| Build a user dictionary | `sudachipy ubuild` (CLI) | `Kabosu.build_user_dict`, `rake kabosu:build_user_dict` |
 
 **kabosu adds**, with no SudachiPy equivalent: a `MorphemeList` with bulk
 accessors (`surfaces`, `readings`, `dictionary_forms`, `normalized_forms`,
@@ -78,7 +85,7 @@ both.
 ## Reproducing
 
 ```sh
-test/parity/setup.sh                  # create venv, pip install sudachipy==0.6.11
+test/parity/setup.sh                  # create venv, pip install sudachipy==0.7.0
 ruby -Ilib test/parity/generate.rb    # regenerate fixtures from SudachiPy
 bundle exec ruby -Ilib -Itest test/parity_test.rb
 ```

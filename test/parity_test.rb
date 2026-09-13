@@ -43,9 +43,9 @@ class ParityTest < Minitest::Test
     "end_c" => :end_c
   }.freeze
 
-  # WordInfo-derived fields. SudachiPy exposes these on a separate get_word_info()
-  # object (and only for in-vocabulary tokens); kabosu exposes them on the
-  # morpheme. Compared only where the fixture recorded them (non-OOV tokens).
+  # WordInfo-derived fields. SudachiPy <= 0.6 exposed these on get_word_info()
+  # for in-vocabulary tokens; 0.7 removed it, so current fixtures omit them.
+  # Compared only where the fixture recorded them.
   WORDINFO_FIELDS = {
     "head_word_length" => :head_word_length,
     "dictionary_form_word_id" => :dictionary_form_word_id,

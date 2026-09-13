@@ -17,11 +17,12 @@ use std::sync::Arc;
 
 use serde_json::{json, Value};
 use sudachi::analysis::morpheme::Morpheme as SudachiMorpheme;
-use sudachi::analysis::stateless_tokenizer::{DictionaryAccess, StatelessTokenizer};
+use sudachi::analysis::stateless_tokenizer::StatelessTokenizer;
 use sudachi::analysis::{Mode, Tokenize};
 use sudachi::config::Config;
 use sudachi::dic::dictionary::JapaneseDictionary;
 use sudachi::dic::word_id::WordId;
+use sudachi::dic::DictionaryAccess;
 
 fn parse_mode(s: &str) -> Mode {
     match s {
@@ -34,9 +35,8 @@ fn parse_mode(s: &str) -> Mode {
 
 // Word-info fields, mirroring kabosu's LazyWordFields + resolve_word_fields.
 struct WordFields {
-    synonym_group_ids: Vec<u32>,
-    dictionary_form_word_id: i32,
-    head_word_length: usize,
+    synonym_group_ids: Vec<i32>,
+    dictionary_form_word_id: i64,
     a_unit_split: Vec<u32>,
     b_unit_split: Vec<u32>,
     word_structure: Vec<u32>,
@@ -44,7 +44,6 @@ struct WordFields {
 
 fn resolve_word_fields<T: DictionaryAccess>(
     dict: &T,
-    surface: &str,
     is_oov: bool,
     dictionary_id: i32,
     word_id_raw: u32,
@@ -52,7 +51,6 @@ fn resolve_word_fields<T: DictionaryAccess>(
     let fallback = || WordFields {
         synonym_group_ids: Vec::new(),
         dictionary_form_word_id: -1,
-        head_word_length: surface.chars().count(),
         a_unit_split: Vec::new(),
         b_unit_split: Vec::new(),
         word_structure: Vec::new(),
@@ -62,12 +60,14 @@ fn resolve_word_fields<T: DictionaryAccess>(
         return fallback();
     }
 
-    let wid = WordId::from_raw(word_id_raw);
+    let wid = WordId::new((word_id_raw >> 28) as u8, word_id_raw & 0x0fff_ffff);
     match dict.lexicon().get_word_info(wid) {
         Ok(info) => WordFields {
             synonym_group_ids: info.synonym_group_ids().to_vec(),
-            dictionary_form_word_id: info.dictionary_form_word_id(),
-            head_word_length: info.head_word_length(),
+            dictionary_form_word_id: match info.borrow_data().dictionary_form_word_id() {
+                d if d == wid => -1,
+                d => i64::from(d.as_raw()),
+            },
             a_unit_split: info.a_unit_split().iter().map(WordId::as_raw).collect(),
             b_unit_split: info.b_unit_split().iter().map(WordId::as_raw).collect(),
             word_structure: info.word_structure().iter().map(WordId::as_raw).collect(),
@@ -87,7 +87,7 @@ fn morpheme_to_json<T: DictionaryAccess>(
     let dictionary_id = m.dictionary_id();
     let word_id_raw = m.word_id().as_raw();
 
-    let wf = resolve_word_fields(dict, &surface, is_oov, dictionary_id, word_id_raw);
+    let wf = resolve_word_fields(dict, is_oov, dictionary_id, word_id_raw);
 
     json!({
         "line": line,
@@ -110,7 +110,7 @@ fn morpheme_to_json<T: DictionaryAccess>(
         "total_cost": m.total_cost(),
         "synonym_group_ids": wf.synonym_group_ids,
         "dictionary_form_word_id": wf.dictionary_form_word_id,
-        "head_word_length": wf.head_word_length,
+        "head_word_length": m.get_word_info().index_form_length(),
         "a_unit_split": wf.a_unit_split,
         "b_unit_split": wf.b_unit_split,
         "word_structure": wf.word_structure,

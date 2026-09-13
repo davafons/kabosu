@@ -8,4 +8,4 @@ edition = "2021"
 publish = false
 
 [dependencies]
-sudachi = { git = "https://github.com/WorksApplications/sudachi.rs", tag = "v0.6.11" }
+sudachi = { git = "https://github.com/WorksApplications/sudachi.rs", tag = "v0.7.0" }

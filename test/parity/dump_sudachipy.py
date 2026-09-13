@@ -7,13 +7,12 @@ kabosu uses, so that any value difference reflects a binding-layer or semantic
 difference rather than a dictionary/config difference. Field names mirror the
 kabosu/reference dumper where the concept is shared; SudachiPy's begin()/end()
 are CHARACTER offsets (kabosu's begin_c/end_c), which the Ruby parity test
-accounts for. WordInfo-derived fields (which SudachiPy exposes on a separate
-object rather than on the morpheme) are included for non-OOV tokens.
+accounts for. SudachiPy 0.7 removed WordInfo, so word-info fields
+(head_word_length, splits, ...) are only checked by the conformance suite.
 """
 
 import json
 import sys
-import warnings
 
 from sudachipy import Dictionary, SplitMode
 
@@ -37,7 +36,7 @@ def main():
     mode = MODES[mode_name]
 
     d = Dictionary(config_path=config_path, resource_dir=resource_dir, dict=dict_path)
-    tok = d.create(mode=mode)
+    tok = d.tokenizer(mode=mode)
 
     out = sys.stdout
     for line, text in enumerate(corpus_lines(corpus)):
@@ -59,17 +58,6 @@ def main():
                 "end_c": m.end(),
                 "synonym_group_ids": list(m.synonym_group_ids()),
             }
-            if not m.is_oov():
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore")
-                    wi = m.get_word_info()
-                record.update(
-                    head_word_length=wi.head_word_length,
-                    dictionary_form_word_id=wi.dictionary_form_word_id,
-                    a_unit_split=list(wi.a_unit_split),
-                    b_unit_split=list(wi.b_unit_split),
-                    word_structure=list(wi.word_structure),
-                )
             out.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 

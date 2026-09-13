@@ -7,7 +7,7 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV="$HERE/venv"
-SUDACHIPY_VERSION="${SUDACHIPY_VERSION:-0.6.11}"
+SUDACHIPY_VERSION="${SUDACHIPY_VERSION:-0.7.0}"
 
 python3 -m venv "$VENV"
 "$VENV/bin/pip" install --quiet --upgrade pip
