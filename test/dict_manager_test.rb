@@ -11,14 +11,16 @@ class DictManagerTest < Minitest::Test
     FileUtils.rm_rf(@tmpdir)
   end
 
-  # Creates a fake .dic file at the expected path
-  def stub_dic(version, edition)
+  # Creates a fake .dic file at the expected path, V1 unless told otherwise.
+  def stub_dic(version, edition, header: Kabosu::DictManager::V1_MAGIC)
     dir = File.join(@tmpdir, "sudachi-dictionary-#{version}")
     FileUtils.mkdir_p(dir)
     path = File.join(dir, "system_#{edition}.dic")
-    FileUtils.touch(path)
+    File.binwrite(path, header)
     path
   end
+
+  V0_HEADER = ["344439921a019fce"].pack("H*")
 
   # Builds a zip shaped like a real release asset, without the network.
   #   legacy: sudachi-dictionary-{version}/system_{edition}.dic  (pre-v20260723)
@@ -290,6 +292,56 @@ class DictManagerTest < Minitest::Test
     stub_dic("20260116", "small")
     error = assert_raises { @manager.install_if_missing("full", version: "00000000") }
     refute_instance_of ArgumentError, error
+  end
+
+  def test_install_if_missing_does_not_settle_for_a_v0_dictionary
+    stub_dic("20260116", "small", header: V0_HEADER)
+
+    error = assert_raises(Kabosu::DictManager::UnsupportedVersion) do
+      @manager.install_if_missing("small", version: "20260116")
+    end
+    assert_match(/predates the V1 format/, error.message)
+  end
+
+  def test_install_refuses_pre_v1_versions_without_touching_the_network
+    @manager.define_singleton_method(:pick_release_sources) { |*| raise "should not be called" }
+
+    assert_raises(Kabosu::DictManager::UnsupportedVersion) { @manager.install("core", version: "20260723") }
+    assert_raises(Kabosu::DictManager::UnsupportedVersion) { @manager.install("core", version: "20260723.1") }
+    assert_raises(Kabosu::DictManager::UnsupportedVersion) { @manager.install("core", version: "latest!") }
+  end
+
+  def test_install_returns_an_existing_v1_dictionary
+    path = stub_dic(Kabosu::DictManager::MIN_VERSION, "core")
+    @manager.define_singleton_method(:pick_release_sources) { |*| raise "should not be called" }
+
+    assert_equal path, @manager.install("core", version: Kabosu::DictManager::MIN_VERSION)
+  end
+
+  def test_install_replaces_a_pre_v1_file_at_a_supported_version
+    stub_dic(Kabosu::DictManager::MIN_VERSION, "core", header: V0_HEADER)
+    @manager.define_singleton_method(:pick_release_sources) { |*| [] }
+
+    # The stale file is cleared before the (stubbed, empty) download attempt.
+    assert_raises(Kabosu::DictManager::DownloadError) do
+      @manager.install("core", version: Kabosu::DictManager::MIN_VERSION)
+    end
+    assert_empty @manager.installed
+  end
+
+  def test_find_skips_v0_dictionaries
+    v1 = stub_dic("20261015", "small")
+    stub_dic("20261015", "full", header: V0_HEADER)
+
+    assert_equal v1, @manager.find
+    assert_equal 2, @manager.installed.size
+  end
+
+  def test_find_explains_when_only_v0_dictionaries_are_installed
+    stub_dic("20260116", "core", header: V0_HEADER)
+
+    error = assert_raises(Kabosu::DictManager::DictNotFound) { @manager.find }
+    assert_match(/pre-V1/, error.message)
   end
 
   def test_install_if_missing_rejects_invalid_edition

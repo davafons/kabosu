@@ -10,9 +10,16 @@ module Kabosu
     EDITION_PRIORITY = %w[full core small].freeze
     GITHUB_REPO = "WorksApplications/SudachiDict".freeze
     GITHUB_API = "https://api.github.com".freeze
+    # sudachi.rs 0.7 reads only V1 dictionaries, which open with this magic.
+    # Older (V0) files stay listed so they can be removed, but are never picked.
+    V1_MAGIC = "SudachiBinaryDic".b.freeze
+    # The first SudachiDict GitHub release carrying V1 assets. v20260723.1 is
+    # V1 too, but was published to PyPI only and has no assets to download.
+    MIN_VERSION = "20261015".freeze
 
     class DictNotFound < StandardError; end
     class DownloadError < StandardError; end
+    class UnsupportedVersion < StandardError; end
 
     # Default storage directory. Honors KABOSU_DICT_DIR so consumers can point
     # the gem at a Docker volume / shared mount without subclassing or threading
@@ -37,13 +44,19 @@ module Kabosu
     def install(edition = "core", version: nil)
       edition = validate_edition(edition)
       version ||= latest_version
+      validate_version(version)
 
       dest_dir = File.join(@dir, "sudachi-dictionary-#{version}")
       dic_path = File.join(dest_dir, "system_#{edition}.dic")
 
       if File.exist?(dic_path)
-        warn "Already installed: #{dic_path}"
-        return dic_path
+        if v1?(dic_path)
+          warn "Already installed: #{dic_path}"
+          return dic_path
+        end
+
+        warn "Replacing pre-V1 dictionary: #{dic_path}"
+        FileUtils.rm_f(dic_path)
       end
 
       FileUtils.mkdir_p(@dir)
@@ -73,6 +86,11 @@ module Kabosu
 
       raise DownloadError, "Expected #{dic_path} after extraction, but file not found" unless File.exist?(dic_path)
 
+      unless v1?(dic_path)
+        FileUtils.rm_f(dic_path)
+        raise UnsupportedVersion, "#{version}/#{edition} is not a V1 dictionary, which sudachi.rs 0.7+ requires"
+      end
+
       warn "Installed: #{dic_path}"
       dic_path
     end
@@ -87,7 +105,7 @@ module Kabosu
     #
     def install_if_missing(edition = "core", version: nil)
       edition = validate_edition(edition)
-      matching = installed.find do |d|
+      matching = readable.find do |d|
         d[:edition] == edition && (version.nil? || d[:version] == version)
       end
       return matching[:path] if matching
@@ -121,8 +139,13 @@ module Kabosu
     # Find the best available dictionary path.
     # Prefers: latest version, then full > core > small.
     def find(edition: nil)
-      candidates = installed
-      raise DictNotFound, "No dictionaries installed. Run: rake kabosu:install" if candidates.empty?
+      candidates = readable
+      if candidates.empty?
+        raise DictNotFound, "No dictionaries installed. Run: rake kabosu:install" if installed.empty?
+
+        raise DictNotFound, "Only pre-V1 dictionaries are installed, which sudachi.rs 0.7+ cannot read. " \
+                            "Run: rake kabosu:install (and rake kabosu:remove VERSION=... for the old ones)"
+      end
 
       if edition
         edition = validate_edition(edition)
@@ -142,6 +165,14 @@ module Kabosu
       end
 
       best.is_a?(Hash) ? best[:path] : latest_version_dicts.first[:path]
+    end
+
+    def readable
+      installed.select { |d| v1?(d[:path]) }
+    end
+
+    def v1?(path)
+      File.binread(path, V1_MAGIC.bytesize) == V1_MAGIC
     end
 
     # ── Remove ──
@@ -188,6 +219,15 @@ module Kabosu
     end
 
     private
+
+    def validate_version(version)
+      return if Gem::Version.new(version) >= Gem::Version.new(MIN_VERSION)
+
+      raise UnsupportedVersion, "SudachiDict #{version} predates the V1 format sudachi.rs 0.7+ reads; " \
+                                "use #{MIN_VERSION} or later"
+    rescue ArgumentError
+      raise UnsupportedVersion, "Malformed SudachiDict version: #{version.inspect}"
+    end
 
     def validate_edition(edition)
       edition = edition.to_s.downcase
