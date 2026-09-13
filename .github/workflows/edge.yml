@@ -21,7 +21,7 @@ jobs:
 
       - name: Set dev version
         run: |
-          # Generate version like 0.6.10.dev.20260429.abcdef1
+          # Generate version like 0.7.0.0.dev.20261116.abcdef1
           base_version=$(ruby -r ./lib/kabosu/version -e "puts Kabosu::VERSION")
           date=$(date -u +%Y%m%d)
           sha=$(git rev-parse --short HEAD)

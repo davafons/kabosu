@@ -12,6 +12,7 @@ mod parsing;
 mod splitter;
 mod token_batch;
 mod tokenizer;
+mod user_dict;
 
 use magnus::{function, method, Error, Module, Object, Ruby};
 
@@ -32,11 +33,20 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
         function!(split_sentences_with_ranges, 3),
     )?;
 
+    module.define_module_function("_build_user_dict", function!(user_dict::build_user_dict, 4))?;
+
     // Kabosu::Dictionary
     let dict_class = module.define_class("Dictionary", ruby.class_object())?;
     dict_class.define_singleton_method("new", function!(RbDictionary::new, 3))?;
     dict_class.define_method("lookup", method!(RbDictionary::lookup, 1))?;
     dict_class.define_method("create", method!(RbDictionary::create, 3))?;
+    dict_class.define_method("_each_entry", method!(RbDictionary::each_entry, 0))?;
+    dict_class.define_method(
+        "_lookup_all_entries",
+        method!(RbDictionary::lookup_all_entries, 1),
+    )?;
+    dict_class.define_method("_oov_morpheme", method!(RbDictionary::oov_morpheme, 5))?;
+    dict_class.define_method("normalize", method!(RbDictionary::normalize, 1))?;
 
     // Kabosu::TokenBatch (internal lazy token container)
     let batch_class = module.define_class("TokenBatch", ruby.class_object())?;
@@ -83,7 +93,17 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     )?;
     morph_class.define_method("a_unit_split", method!(RbMorpheme::a_unit_split, 0))?;
     morph_class.define_method("b_unit_split", method!(RbMorpheme::b_unit_split, 0))?;
+    morph_class.define_method("c_unit_split", method!(RbMorpheme::c_unit_split, 0))?;
     morph_class.define_method("word_structure", method!(RbMorpheme::word_structure, 0))?;
+    morph_class.define_method("user_data", method!(RbMorpheme::user_data, 0))?;
+    morph_class.define_method(
+        "dictionary_form_morpheme",
+        method!(RbMorpheme::dictionary_form_morpheme, 0),
+    )?;
+    morph_class.define_method(
+        "normalized_form_morpheme",
+        method!(RbMorpheme::normalized_form_morpheme, 0),
+    )?;
     morph_class.define_method("total_cost", method!(RbMorpheme::total_cost, 0))?;
     morph_class.define_method("system?", method!(RbMorpheme::is_system, 0))?;
     morph_class.define_method("user?", method!(RbMorpheme::is_user, 0))?;

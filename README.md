@@ -43,10 +43,12 @@ morpheme.dictionary_id       # => 0                - source dictionary id
 morpheme.word_id             # => 544373           - internal word id
 morpheme.synonym_group_ids   # => []               - synonym group ids
 morpheme.dictionary_form_word_id # => -1           - dictionary-form word id
-morpheme.head_word_length    # => 3                - head word length in codepoints
+morpheme.head_word_length    # => 9                - bytes of the normalized index form
 morpheme.a_unit_split        # => [123, 456]       - split-A word ids
 morpheme.b_unit_split        # => []               - split-B word ids
 morpheme.word_structure      # => [123, 456]       - word-structure ids
+morpheme.c_unit_split        # => []               - split-C word ids (V1 dictionaries)
+morpheme.user_data           # => ""               - free text from a user dictionary's user_data column
 morpheme.total_cost          # => 5765             - morphological analysis cost
 morpheme.begin               # => 0                - start byte offset
 morpheme.end                 # => 9                - end byte offset
@@ -75,22 +77,34 @@ Then install and download a [Sudachi dictionary](https://github.com/WorksApplica
 
 ```sh
 bundle install
-bundle exec rake kabosu:install[small]  # or core, full
+bundle exec rake kabosu:install:small  # or :core, :full
 ```
 
 Dictionary editions (from smallest to largest): `small`, `core`, `full`. See the [SudachiDict documentation](https://github.com/WorksApplications/SudachiDict?tab=readme-ov-file#dictionary-types) for details on the differences between editions.
+
+kabosu 0.7 (sudachi.rs 0.7) reads only the V1 dictionary format: SudachiDict `20261015` or later.
+
+## Upgrading from 0.6
+
+sudachi.rs 0.7 changed the binary dictionary format, so a 0.6 setup needs three things:
+
+1. **Reinstall the system dictionary.** Dictionaries installed by kabosu 0.6 are V0 and cannot be loaded. Run `rake kabosu:install` (or `install_if_missing`, which ignores V0 files), then drop the old ones with `rake kabosu:remove VERSION=...`. `rake kabosu:list` marks them.
+2. **Rebuild user dictionaries** against that exact system dictionary: `rake kabosu:build_user_dict CSV=names.csv OUTPUT=names.dic` (or `Kabosu.build_user_dict`). A user dictionary now records which system dictionary it was built with, and loading it with a different one raises `Kabosu::DictionaryError`. The CSV uses the V1 column layout (see [Sudachi's user dictionary guide](https://github.com/WorksApplications/Sudachi/blob/develop/docs/user_dict.md)).
+3. **Expect small tokenization differences.** sudachi.rs 0.7 aligned its lattice search, character-category handling and katakana OOV joining with Java Sudachi, so some inputs segment differently even with the same dictionary. Custom `char.def` files must replace `NOOOVBOW2` with `NOOOVBOW NOOOVEOW`.
+
+Other visible changes: `Dictionary#lookup` normalizes the query first (`ｶﾎﾞｽ` finds カボス), joined numerals and katakana carry an OOV `word_id` instead of `4294967295`, and a custom config that names no `char.def`/`unk.def` falls back to the files built into sudachi.rs.
 
 ## Dictionary management
 
 Rake tasks for managing Sudachi dictionaries:
 
 ```sh
-rake kabosu:install[small]      # Install a dictionary (VERSION=YYYYMMDD for a specific version)
+rake kabosu:install:small       # Install a dictionary (VERSION=YYYYMMDD for a specific version)
 rake kabosu:install_if_missing  # Same, but a no-op when a dictionary is already installed
 rake kabosu:list                # List installed dictionaries
 rake kabosu:versions            # Show available versions from GitHub
 rake kabosu:path                # Show path to best available dictionary
-rake kabosu:remove[small]       # Remove a dictionary (VERSION=YYYYMMDD for a specific version)
+rake kabosu:remove:small        # Remove a dictionary (VERSION=YYYYMMDD for a specific version)
 ```
 
 Dictionaries are stored in `~/.kabosu/dict/` by default. Set `KABOSU_DICT_DIR` to customize — useful for pointing at a Docker volume so the dictionary persists across deployments.
@@ -134,7 +148,7 @@ list = tokenizer.tokenize("国会議事堂前駅")
 list.surfaces
 list.first.part_of_speech
 
-# Dictionary prefix lookup
+# Dictionary prefix lookup (the query is normalized first, like tokenization)
 dict.lookup("東京都").surfaces
 
 # Morpheme split
@@ -144,6 +158,31 @@ m.split(mode: :a).surfaces
 # Sentence splitting
 Kabosu.split_sentences("東京都に住んでいる。大阪も好きだ。", ranges: true)
 Kabosu.split_sentences("長い文...", limit: 12, with_checker: true)
+```
+
+### Dictionary entries and forms (sudachi.rs 0.7)
+
+```ruby
+m = tokenizer.tokenize("住んでいた").first   # 住ん
+m.dictionary_form_morpheme                   # the 住む entry itself: POS, reading, ids…
+tokenizer.tokenize("附属").first.normalized_form_morpheme.surface # => "付属"
+# A word that is its own form (and any OOV word) returns itself.
+
+# Every entry in the loaded dictionaries, lazily (millions for `full`)
+dict.entries.lazy.select(&:user?).first(10)
+
+# Exact matches by scanning every entry, including ones not indexed for
+# lookup. Slow on large dictionaries; prefer #lookup.
+dict.lookup_all_entries("ｶﾎﾞｽ").surfaces     # => ["カボス"]
+
+# Hand-made out-of-vocabulary morpheme; forms default to the surface
+dict.oov_morpheme(m.part_of_speech_id, "ズィーガン", reading: "ジーガン")
+
+# What tokenization actually sees after the input-text plugins
+dict.normalize("ｶﾎﾞｽ ＡＢＣ コンピュータ〜〜") # => "カボス abc コンピューター"
+
+# Compile a user dictionary against the installed system dictionary
+Kabosu.build_user_dict("names.csv", output: "names.dic")
 ```
 
 ## Benchmarks

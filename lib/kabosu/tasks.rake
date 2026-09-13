@@ -56,6 +56,19 @@ namespace :kabosu do
     end
   end
 
+  # ── User dictionaries ──
+
+  desc "Build a user dictionary: CSV=a.csv[,b.csv] OUTPUT=user.dic [SYSTEM_DICT=path] " \
+       "(defaults to the best installed dictionary)"
+  task :build_user_dict do
+    require "kabosu"
+    csv = ENV.fetch("CSV") { abort "CSV=path/to/lexicon.csv is required" }.split(",")
+    output = ENV.fetch("OUTPUT") { abort "OUTPUT=path/to/user.dic is required" }
+    system_dict = ENV.fetch("SYSTEM_DICT") { Kabosu::Dictionary.path }
+    Kabosu.build_user_dict(csv, output: output, system_dict: system_dict)
+    puts "Built #{output} against #{system_dict}"
+  end
+
   # ── Info ──
 
   desc "List installed Sudachi dictionaries"
@@ -70,7 +83,8 @@ namespace :kabosu do
       puts
       dicts.each do |d|
         size_mb = (File.size(d[:path]).to_f / 1024 / 1024).round(1)
-        puts "  #{d[:version]} / #{d[:edition].ljust(5)} (#{size_mb} MB)"
+        unreadable = manager.v1?(d[:path]) ? "" : "  [pre-V1, unreadable by this kabosu]"
+        puts "  #{d[:version]} / #{d[:edition].ljust(5)} (#{size_mb} MB)#{unreadable}"
         puts "    #{d[:path]}"
       end
     end

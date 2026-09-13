@@ -45,7 +45,7 @@ pub(crate) fn parse_subset(value: Option<Value>) -> Result<InfoSubset, Error> {
             Some(flag) => subset |= flag,
             None => {
                 return Err(arg_error(format!(
-                    "unknown field {name:?}; expected one of: surface, head_word_length, pos_id, normalized_form, dictionary_form, dictionary_form_word_id, reading_form, split_a, split_b, word_structure, synonym_group_id"
+                    "unknown field {name:?}; expected one of: surface, headword, head_word_length, index_form_length, pos_id, normalized_form, dictionary_form, dictionary_form_word_id, reading_form, split_a, split_b, split_c, word_structure, synonym_group_ids, user_data"
                 )))
             }
         }
@@ -56,18 +56,20 @@ pub(crate) fn parse_subset(value: Option<Value>) -> Result<InfoSubset, Error> {
 
 fn subset_flag(name: &str) -> Option<InfoSubset> {
     match name {
-        "surface" => Some(InfoSubset::SURFACE),
-        "head_word_length" => Some(InfoSubset::HEAD_WORD_LENGTH),
+        "surface" | "headword" => Some(InfoSubset::HEADWORD),
+        "head_word_length" | "index_form_length" => Some(InfoSubset::INDEX_FORM_LENGTH),
         "pos_id" => Some(InfoSubset::POS_ID),
         "normalized_form" | "normalized" => Some(InfoSubset::NORMALIZED_FORM),
         "dictionary_form" | "dictionary" | "dictionary_form_word_id" => {
-            Some(InfoSubset::DIC_FORM_WORD_ID)
+            Some(InfoSubset::DICTIONARY_FORM)
         }
         "reading_form" | "reading" => Some(InfoSubset::READING_FORM),
         "split_a" => Some(InfoSubset::SPLIT_A),
         "split_b" => Some(InfoSubset::SPLIT_B),
+        "split_c" => Some(InfoSubset::SPLIT_C),
+        "user_data" => Some(InfoSubset::USER_DATA),
         "word_structure" => Some(InfoSubset::WORD_STRUCTURE),
-        "synonym_group_id" | "synonym_group_ids" => Some(InfoSubset::SYNONYM_GROUP_ID),
+        "synonym_group_id" | "synonym_group_ids" => Some(InfoSubset::SYNONYM_GROUP_IDS),
         _ => None,
     }
 }
@@ -75,10 +77,10 @@ fn subset_flag(name: &str) -> Option<InfoSubset> {
 pub(crate) fn subset_to_array(ruby: &Ruby, subset: InfoSubset) -> Result<RArray, Error> {
     let ary = ruby.ary_new();
 
-    if subset.contains(InfoSubset::SURFACE) {
+    if subset.contains(InfoSubset::HEADWORD) {
         ary.push(ruby.str_new("surface"))?;
     }
-    if subset.contains(InfoSubset::HEAD_WORD_LENGTH) {
+    if subset.contains(InfoSubset::INDEX_FORM_LENGTH) {
         ary.push(ruby.str_new("head_word_length"))?;
     }
     if subset.contains(InfoSubset::POS_ID) {
@@ -87,7 +89,7 @@ pub(crate) fn subset_to_array(ruby: &Ruby, subset: InfoSubset) -> Result<RArray,
     if subset.contains(InfoSubset::NORMALIZED_FORM) {
         ary.push(ruby.str_new("normalized_form"))?;
     }
-    if subset.contains(InfoSubset::DIC_FORM_WORD_ID) {
+    if subset.contains(InfoSubset::DICTIONARY_FORM) {
         ary.push(ruby.str_new("dictionary_form"))?;
         ary.push(ruby.str_new("dictionary_form_word_id"))?;
     }
@@ -100,10 +102,16 @@ pub(crate) fn subset_to_array(ruby: &Ruby, subset: InfoSubset) -> Result<RArray,
     if subset.contains(InfoSubset::SPLIT_B) {
         ary.push(ruby.str_new("split_b"))?;
     }
+    if subset.contains(InfoSubset::SPLIT_C) {
+        ary.push(ruby.str_new("split_c"))?;
+    }
+    if subset.contains(InfoSubset::USER_DATA) {
+        ary.push(ruby.str_new("user_data"))?;
+    }
     if subset.contains(InfoSubset::WORD_STRUCTURE) {
         ary.push(ruby.str_new("word_structure"))?;
     }
-    if subset.contains(InfoSubset::SYNONYM_GROUP_ID) {
+    if subset.contains(InfoSubset::SYNONYM_GROUP_IDS) {
         ary.push(ruby.str_new("synonym_group_id"))?;
     }
 

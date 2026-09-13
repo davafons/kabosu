@@ -105,6 +105,14 @@ module Kabosu
 
       def map_dictionary_init_error(error, config:, system_dict:)
         message = error.message
+        if message.include?("V0 version")
+          return DictionaryError.new(
+            "#{message}: a system or user dictionary is in the pre-V1 format, which sudachi.rs 0.7+ cannot read. " \
+            "Install SudachiDict #{DictManager::MIN_VERSION} or later (rake kabosu:install) " \
+            "and rebuild user dictionaries against it."
+          )
+        end
+
         if (config && system_dict.nil?) || message.match?(/config|setting\.json|json/i)
           ConfigError.new(message)
         else
@@ -148,6 +156,41 @@ module Kabosu
     rescue RuntimeError => e
       raise LookupError.new(e.message), cause: e
     end
+
+    # Every public dictionary entry as a standalone Morpheme (offsets cover its
+    # own headword). Lazy: a `full` dictionary holds millions of entries, so
+    # chain with `.lazy`, `.first(n)` or `.each` rather than `.to_a`.
+    #
+    #   dict.entries.lazy.select { _1.user? }.first(10)
+    def entries(&block)
+      return enum_for(:entries) unless block
+
+      _each_entry(&block)
+      self
+    end
+
+    # Like #lookup, but exact matches only and found by scanning every entry,
+    # so it also finds entries that are not indexed for lookup. Slow.
+    def lookup_all_entries(surface)
+      raise ArgumentError, "surface must be a String" unless surface.is_a?(String)
+
+      MorphemeList.new(_lookup_all_entries(surface))
+    rescue RuntimeError => e
+      raise LookupError.new(e.message), cause: e
+    end
+
+    # Builds an out-of-vocabulary Morpheme by hand. The forms default to the
+    # surface. pos_id comes from Morpheme#part_of_speech_id.
+    #
+    #   dict.oov_morpheme(pos_id, "ズィーガンボルト", reading: "ズィーガンボルト")
+    def oov_morpheme(pos_id, surface, reading: nil, normalized_form: nil, dictionary_form: nil)
+      raise ArgumentError, "pos_id must be an Integer" unless pos_id.is_a?(Integer)
+      raise ArgumentError, "surface must be a String" unless surface.is_a?(String)
+
+      _oov_morpheme(pos_id, surface, reading, normalized_form, dictionary_form)
+    rescue RangeError, RuntimeError => e
+      raise ArgumentError, "invalid part-of-speech id #{pos_id}: #{e.message}"
+    end
   end
 
   # ── Tokenizer: wrap output in MorphemeList ──
@@ -177,6 +220,23 @@ module Kabosu
     rescue RuntimeError => e
       raise TokenizationError.new(e.message), cause: e
     end
+  end
+
+  # Compiles user-dictionary CSV(s) into a binary user dictionary. The result
+  # loads only next to the system dictionary it was built against, so rebuild
+  # whenever that changes (including the move to sudachi.rs 0.7).
+  #
+  #   Kabosu.build_user_dict("names.csv", output: "names.dic")
+  #   Kabosu::Dictionary.new(system_dict: Kabosu::Dictionary.path, user_dicts: ["names.dic"])
+  def self.build_user_dict(inputs, output:, system_dict: Dictionary.path, description: nil)
+    inputs = Array(inputs)
+    raise ArgumentError, "inputs must be String paths" unless inputs.all?(String)
+    raise ArgumentError, "output must be a String" unless output.is_a?(String)
+
+    _build_user_dict(inputs, system_dict, output, description)
+    output
+  rescue RuntimeError => e
+    raise DictionaryError.new(e.message), cause: e
   end
 
   def self.split_sentences(text, limit: nil, with_checker: false, ranges: false, dictionary: nil)
